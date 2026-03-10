@@ -93,82 +93,68 @@ def get_or_create_preferences(db: Session, phone_number: str) -> ContractorPrefe
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def detect_intent(text: str) -> str:
-    """Detects user intent from natural language."""
+    """Detects user intent from natural language with highly forgiving matching."""
     t = text.lower().strip()
+    
+    # Clean up punctuation for easier matching
+    import re
+    t_clean = re.sub(r'[^\w\s]', '', t)
+
+    # EXACT NUMBER MATCHES (The priority for our new numbered menus)
+    if t_clean == "1": return "menu_1"
+    if t_clean == "2": return "menu_2"
+    if t_clean == "3": return "menu_3"
+    if t_clean == "4": return "menu_4"
+    if t_clean == "5": return "menu_5"
+    if t_clean == "6": return "menu_6"
+    if t_clean == "7": return "menu_7"
+    if t_clean == "8": return "menu_8"
+
+    # Forgiving matching arrays
+    def matchesAny(keywords):
+        return any(kw in t_clean for kw in keywords)
+
+    # Analysis Menu Intends
+    if matchesAny(["qualif", "eligib", "alig", "eligbel", "chalega"]): return "menu_1"
+    if matchesAny(["risk", "problem", "condit", "dikkat", "khatra", "issue"]): return "menu_2"
+    if matchesAny(["boq", "rate", "quote", "kitna quote", "strategy", "paisa"]): return "menu_3"
+    if matchesAny(["doc", "action", "kya karna", "checklist", "paper"]): return "menu_4"
+    if matchesAny(["cash", "capital", "working", "fund", "paisa chahiye"]): return "menu_5"
+    if matchesAny(["cost", "estimat", "kitna lagega", "kharcha", "est"]): return "menu_6"
+    if matchesAny(["poora", "full", "sab", "all", "report", "detail"]): return "menu_7"
+    if matchesAny(["pdf", "download", "file"]): return "menu_8"
+    if matchesAny(["competi", "kitne log", "kon kon"]): return "menu_competitor"
+    if matchesAny(["subcontract", "thekedar", "dusra"]): return "menu_subcontractor"
+    if matchesAny(["sumary", "summary", "kya hai", "short"]): return "menu_summary"
+    if matchesAny(["bid", "lena", "chahiye", "skip", "verdict"]): return "menu_verdict"
 
     # Payment / plan intents
-    if any(kw in t for kw in ["plan", "price", "pricing", "kaunsa plan", "upgrade", "subscribe",
-                               "kitne ka", "kya rate", "subscription", "best plan", "compare"]):
-        return "show_plans"
-    if any(kw in t for kw in ["₹99", "99 wala", "single", "ek analysis"]):
-        return "buy_single"
-    if any(kw in t for kw in ["₹399", "399 wala", "5 pack", "pack", "five pack"]):
-        return "buy_pack"
-    if any(kw in t for kw in ["₹799", "799 wala", "monthly", "unlimited", "mahina"]):
-        return "buy_monthly"
-    if any(kw in t for kw in ["renew", "extend", "dobara", "phir lena"]):
-        return "renew"
+    if matchesAny(["plan", "price", "pricing", "upgrade", "subscrib", "kitne ka", "rate", "paisa", "payment"]): return "show_plans"
+    if matchesAny(["99", "single", "ek", "one"]): return "buy_single"
+    if matchesAny(["399", "pack", "five", "paanch", "5"]): return "buy_pack"
+    if matchesAny(["799", "month", "unlimit", "mahina"]): return "buy_monthly"
+    if matchesAny(["renew", "extend", "dobara", "phir"]): return "renew"
 
     # Preference intents
-    if any(kw in t for kw in ["preference", "alert chahiye", "tenders bhejo", "dhundo",
-                               "set karo", "preference update", "alert setting",
-                               "mujhe tenders", "change location", "location change",
-                               "state change", "portal"]):
-        return "setup_preferences"
+    if matchesAny(["pref", "alert", "tender bhejo", "dhundo", "set karo", "change location", "state", "portal"]): return "setup_preferences"
 
     # Alert control
-    if any(kw in t for kw in ["alert band", "stop alert", "pause", "rok do", "busy hoon"]):
-        return "pause_alerts"
-    if any(kw in t for kw in ["alert shuru", "resume", "fir bhejo", "start alert", "ab bhejo"]):
-        return "resume_alerts"
+    if matchesAny(["band", "stop", "pause", "rok", "busy"]): return "pause_alerts"
+    if matchesAny(["shuru", "resume", "fir bhejo", "start", "ab bhejo"]): return "resume_alerts"
 
     # Balance / account
-    if any(kw in t for kw in ["credit", "balance", "kitne bache", "plan expire", "account",
-                               "kitne analysis", "mera plan"]):
-        return "check_balance"
+    if matchesAny(["credit", "balanc", "bache", "expire", "account", "mera plan"]): return "check_balance"
 
     # History
-    if any(kw in t for kw in ["history", "past", "purana", "purane", "last week", "kitne tender",
-                               "meri history"]):
-        return "show_history"
+    if matchesAny(["histor", "past", "purana", "last", "meri"]): return "show_history"
 
     # Search
-    if t.startswith("search") or t.startswith("dhundo") or t.startswith("find"):
-        return "search"
-    if "koi naya tender" in t or "naya tender hai" in t:
-        return "search"
+    if matchesAny(["search", "dhundo", "find", "naya tender"]): return "search"
 
     # Restart
-    if any(kw in t for kw in ["restart", "reset", "naya shuru", "start over"]):
-        return "restart"
+    if matchesAny(["restart", "reset", "naya shuru", "shuru se", "start over", "hi", "hello", "hey"]): return "restart"
 
     # Analyze (from alert)
-    if t in ("analyze", "yes", "haan", "ha", "analyse"):
-        return "analyze_yes"
-    if t in ("no", "nahi", "nah", "skip"):
-        return "analyze_no"
-    if t in ("later", "baad mein", "kal", "remind"):
-        return "analyze_later"
-
-    # Menu numbers or keywords for analysis sections
-    if any(kw in t for kw in ["qualify", "eligibility", "eligible"]) or t.startswith("1"):
-        return "menu_1"
-    if any(kw in t for kw in ["risk", "problem", "condition", "dikkat"]) or t.startswith("2"):
-        return "menu_2"
-    if any(kw in t for kw in ["boq", "rate", "quote", "kitna quote", "strategy"]) or t.startswith("3"):
-        return "menu_3"
-    if any(kw in t for kw in ["document", "action plan", "kya karna", "checklist"]) or t.startswith("4"):
-        return "menu_4"
-    if any(kw in t for kw in ["cash", "capital", "paisa", "working"]) or t.startswith("5"):
-        return "menu_5"
-    if any(kw in t for kw in ["cost", "estimate", "kitna lagega", "project kitne"]) or t.startswith("6"):
-        return "menu_6"
-    if any(kw in t for kw in ["poora", "full report", "sab bhejo", "all"]) or t.startswith("7"):
-        return "menu_7"
-    if any(kw in t for kw in ["pdf", "download"]) or t.startswith("8"):
-        return "menu_8"
-    if any(kw in t for kw in ["competitor", "competition", "kitne log"]):
-        return "menu_competitor"
     if any(kw in t for kw in ["subcontract", "thekedar"]):
         return "menu_subcontractor"
     if any(kw in t for kw in ["summary", "kya hai tender"]):
@@ -204,8 +190,22 @@ def handle_incoming_message(phone_number: str, text: str, media_url: str, db: Se
             "Aapka tender abhi analyze ho raha hai... thoda wait karo ⏳")
         return
 
+    # ── Handling Payment Choice State ──
+    if state == "awaiting_payment_choice":
+        t_clean = text_lower.replace(".", "").replace(",", "").strip()
+        if t_clean == "1": text_lower = "plan 1"
+        if t_clean == "2": text_lower = "plan 2"
+        if t_clean == "3": text_lower = "plan 3"
+        user.conversation_state = "ready"
+        db.commit()
+
     # ── Detect intent for all other states ──
     intent = detect_intent(text_lower)
+
+    # ── Mapping Payment Choices from State ──
+    if text_lower == "plan 1": intent = "buy_single"
+    if text_lower == "plan 2": intent = "buy_pack"
+    if text_lower == "plan 3": intent = "buy_monthly"
 
     # Global intents (work in any state)
     if intent == "show_plans":
@@ -294,26 +294,46 @@ aur main aapke liye tenders dhunduga! 🔍"""
 def start_preference_setup(user: User, db: Session):
     user.conversation_state = "awaiting_location"
     db.commit()
-    send_whatsapp_message(user.phone_number,
-        "Bilkul! Preferences set karte hain.\n"
-        "Aap kahan kaam karte ho?\n"
-        "State ya city ka naam batao.\n"
-        "Multiple bhi bol sakte ho.\n\n"
-        "Jaise: \"Ladakh aur J&K\"\n"
-        "Ya: \"Mumbai, Pune\"\n"
-        "Ya: \"All India\"")
+    msg = """📍 *Aap kahan kaam karte ho?*
+(Sirf *Number* reply karo. Multiple ke liye comma lagao, jaise: 2, 4):
+
+1️⃣ All India 🇮🇳
+2️⃣ Maharashtra 🏙️
+3️⃣ Delhi NCR 🏛️
+4️⃣ Punjab & Haryana 🌾
+5️⃣ J&K & Ladakh ⛰️
+6️⃣ Uttar Pradesh 🕌
+7️⃣ Karnataka 🏢
+8️⃣ Gujarat 🏭
+
+👉 *Ya apna State/City type karo!*"""
+    send_whatsapp_message(user.phone_number, msg)
 
 
 def handle_preference_step(user: User, text: str, db: Session):
     state = user.conversation_state
     pref = get_or_create_preferences(db, user.phone_number)
+    
+    import re
+    numbers = re.findall(r'\d+', text)
 
     if state == "awaiting_location":
-        states = detect_states_from_text(text)
+        added_states = []
+        if "1" in numbers: added_states.extend(list(STATES.keys()))
+        if "2" in numbers: added_states.append("maharashtra")
+        if "3" in numbers: added_states.append("delhi")
+        if "4" in numbers: added_states.extend(["punjab", "haryana", "chandigarh"])
+        if "5" in numbers: added_states.extend(["jammu kashmir", "ladakh"])
+        if "6" in numbers: added_states.append("uttar pradesh")
+        if "7" in numbers: added_states.append("karnataka")
+        if "8" in numbers: added_states.append("gujarat")
+
+        nlp_states = detect_states_from_text(text)
+        states = list(set(added_states + nlp_states))
+
         if not states:
             send_whatsapp_message(user.phone_number,
-                "Samjha nahi. State ya city ka naam type karo.\n"
-                "Jaise: \"Ladakh\" ya \"Mumbai\" ya \"All India\"")
+                "Samjha nahi. Sirf Option Number bhi bhej sakte ho (1 se 8 tak).")
             return
 
         pref.states_list = json.dumps(states)
@@ -332,12 +352,28 @@ def handle_preference_step(user: User, text: str, db: Session):
 
         send_whatsapp_message(user.phone_number,
             f"✅ Location noted: {names}{ladakh_note}\n\n"
-            f"Ab batao — kaunsa kaam karte ho?\n"
-            f"Jaise: RCC, roads, buildings, bridges,\n"
-            f"water supply, electrical, ya kuch aur?")
+            f"🔨 *Kaunsa kaam karte ho?*\n"
+            f"(Sirf *Number* reply karo. Multiple = 1, 3):\n\n"
+            f"1️⃣ Roads & Highways 🛣️\n"
+            f"2️⃣ Building / Civil Works 🏗️\n"
+            f"3️⃣ Electrical Works ⚡\n"
+            f"4️⃣ Water Supply / Plumbing 💧\n"
+            f"5️⃣ Bridges & Flyovers 🌉\n"
+            f"6️⃣ Solar & Renewable ☀️\n\n"
+            f"👉 *Ya apna work type likh do!*")
 
     elif state == "awaiting_work_type":
-        work_types = detect_work_types_from_text(text)
+        added_work = []
+        if "1" in numbers: added_work.append("Road Construction")
+        if "2" in numbers: added_work.append("Building Construction")
+        if "3" in numbers: added_work.append("Electrical Works")
+        if "4" in numbers: added_work.append("Water Supply")
+        if "5" in numbers: added_work.append("Bridge Construction")
+        if "6" in numbers: added_work.append("Solar & Renewable")
+        
+        nlp_work = detect_work_types_from_text(text)
+        work_types = list(set(added_work + nlp_work))
+        
         pref.work_types = json.dumps(work_types)
         pref.updated_at = datetime.utcnow()
         user.conversation_state = "awaiting_value_range"
@@ -345,13 +381,25 @@ def handle_preference_step(user: User, text: str, db: Session):
 
         send_whatsapp_message(user.phone_number,
             f"✅ Work types noted: {', '.join(work_types)}\n\n"
-            f"Kitni value ke tenders chahiye?\n"
-            f"Minimum aur maximum batao.\n\n"
-            f"Jaise: \"50 lakh se 5 crore\"\n"
-            f"Ya: \"1 crore se upar\"")
+            f"💰 *Kitni value ke tenders chahiye?*\n"
+            f"(Sirf *Number* reply karo):\n\n"
+            f"1️⃣ Upto 50 Lakh\n"
+            f"2️⃣ 50 Lakh - 5 Crore\n"
+            f"3️⃣ 5 Crore - 20 Crore\n"
+            f"4️⃣ 20 Crore - 100 Crore\n"
+            f"5️⃣ All Amounts (Sabhi)\n\n"
+            f"👉 *Ya apni range likho (Jaise: \"2 Cr se 5 Cr\")*")
 
     elif state == "awaiting_value_range":
-        min_val, max_val = parse_value_range(text)
+        min_val, max_val = 0, 500000000
+        
+        if "1" in numbers: min_val, max_val = 0, 5000000
+        elif "2" in numbers: min_val, max_val = 5000000, 50000000
+        elif "3" in numbers: min_val, max_val = 50000000, 200000000
+        elif "4" in numbers: min_val, max_val = 200000000, 1000000000
+        elif "5" in numbers: min_val, max_val = 0, 10000000000
+        else:
+            min_val, max_val = parse_value_range(text)
         pref.min_value = min_val
         pref.max_value = max_val
         pref.updated_at = datetime.utcnow()
@@ -363,12 +411,30 @@ def handle_preference_step(user: User, text: str, db: Session):
 
         send_whatsapp_message(user.phone_number,
             f"✅ Value range: {min_disp} to {max_disp}\n\n"
-            f"Kaunse departments ke tenders?\n"
-            f"Jaise: PWD, BRO, NHAI, Municipal,\n"
-            f"Railway, Housing, ya \"sab sarkari\"")
+            f"🏢 *Kaunse depts ke tenders chahiye?*\n"
+            f"(Sirf *Number* reply karo. Jaise: 1, 2):\n\n"
+            f"1️⃣ Sabhi Sarkari (All Gov) 🏛️\n"
+            f"2️⃣ PWD / CPWD / Municipal 🏢\n"
+            f"3️⃣ Highways (NHAI, BRO, NHIDCL) 🛣️\n"
+            f"4️⃣ Railways & Metro 🚂\n"
+            f"5️⃣ Jal Board / Water Depts 💧\n"
+            f"6️⃣ Defence / MES 🛡️\n\n"
+            f"👉 *Ya apna dept likh do!*")
 
     elif state == "awaiting_departments":
-        depts = detect_departments_from_text(text)
+        added_depts = []
+        if "1" in numbers: added_depts.append("All Government")
+        if "2" in numbers: added_depts.extend(["PWD", "CPWD", "Municipal"])
+        if "3" in numbers: added_depts.extend(["NHAI", "BRO", "NHIDCL"])
+        if "4" in numbers: added_depts.extend(["Railways", "Metro"])
+        if "5" in numbers: added_depts.append("Water Board")
+        if "6" in numbers: added_depts.append("MES")
+        
+        nlp_depts = detect_departments_from_text(text)
+        depts = list(set(added_depts + nlp_depts))
+        
+        if not depts: depts = ["All Government"]
+        
         pref.departments = json.dumps(depts)
         pref.updated_at = datetime.utcnow()
         user.conversation_state = "awaiting_alert_freq"
@@ -376,19 +442,20 @@ def handle_preference_step(user: User, text: str, db: Session):
 
         send_whatsapp_message(user.phone_number,
             f"✅ Departments: {', '.join(depts)}\n\n"
-            f"Kitni baar alert chahiye?\n\n"
-            f"• \"turant\" — jab bhi naya aaye\n"
-            f"• \"subah\" — daily 8 AM digest\n"
-            f"• \"weekly\" — har Monday summary")
+            f"⏰ *Kitni baar alert chahiye?*\n"
+            f"(Sirf *Number* reply karo):\n\n"
+            f"1️⃣ Instant 🚀 (Naya aate hi turant alert)\n"
+            f"2️⃣ Daily Morning ☀️ (Subah 8 baje digest)\n"
+            f"3️⃣ Weekly 📅 (Monday summary)")
 
     elif state == "awaiting_alert_freq":
         freq = "daily"
         t = text.lower()
-        if any(kw in t for kw in ["turant", "instant", "immediately", "jab bhi", "real time"]):
+        if "1" in numbers or any(kw in t for kw in ["turant", "instant", "immediately", "jab bhi", "real time"]):
             freq = "instant"
-        elif any(kw in t for kw in ["weekly", "monday", "hafte", "hafta"]):
+        elif "3" in numbers or any(kw in t for kw in ["weekly", "monday", "hafte", "hafta"]):
             freq = "weekly"
-        elif any(kw in t for kw in ["subah", "daily", "roz", "8", "morning"]):
+        elif "2" in numbers or any(kw in t for kw in ["subah", "daily", "roz", "8", "morning"]):
             freq = "daily"
 
         pref.alert_frequency = freq
@@ -428,7 +495,21 @@ Ab tender PDF bhejo ya wait karo alerts ke liye! 📄"""
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def show_plans(user: User, db: Session):
-    send_whatsapp_message(user.phone_number, PLAN_COMPARISON)
+    user.conversation_state = "awaiting_payment_choice"
+    db.commit()
+    msg = """⭐ *TenderBot Plans:*
+
+1️⃣ *Buy 1 Report (₹99)*
+Best for occasional use. Valid 48 hrs.
+
+2️⃣ *Starter Pack - 5 Reports (₹399) 🔥 Best Value*
+Live searches, full analysis reports. Valid 60 days.
+
+3️⃣ *Unlimited Pro + Alerts (₹799/month)*
+30 reports + Unlimited AI alert analysis. Bot hunts tenders for you!
+
+👉 *Kaunsa plan chahiye? Sirf Number reply karo!*"""
+    send_whatsapp_message(user.phone_number, msg)
 
 
 def handle_buy(user: User, intent: str, db: Session):
@@ -587,16 +668,17 @@ def request_payment(user: User, db: Session):
 
     msg += f"""Agle tender ke liye:
 
-💳 ₹99  — 1 analysis
-💳 ₹399 — 5 analyses (₹80 each) ⭐ Best Value
-💳 ₹799 — 30/month + unlimited alerts
+1️⃣ ₹99  — 1 Analysis 📄
+2️⃣ ₹399 — 5 Analyses Pack ⭐ (Best Value)
+3️⃣ ₹799 — Monthly Pro + Alerts 🚀
 
-Abhi ₹99 mein shuru karo:
+👉 *Abhi ₹99 se shuru karne ke liye link pe click karein:*
 {link_99}
 
-Ya type karo "399 wala" ya "799 wala"
-for bigger plans."""
+👉 *Bade plan (2 ya 3) ke liye sirf Number reply karo!*"""
 
+    user.conversation_state = "awaiting_payment_choice"
+    db.commit()
     send_whatsapp_message(user.phone_number, msg)
 
 
@@ -660,18 +742,18 @@ def process_pdf_background(phone_number: str, media_url: str):
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
 Kya dekhna chahte ho?
-Type karo ya poochho:
+(Bina type kiye, sirf *Number* reply karo!)
 
-• "eligibility" — qualify karte ho?
-• "risks" — hidden risks kya hain?
-• "boq" — rates aur bid strategy
-• "documents" — action plan
-• "cash flow" — working capital
-• "cost" — project cost estimate
-• "full report" — sab ek saath
-• "pdf" — PDF download karo
+1️⃣ *Am I Eligible?* (Qualify check)
+2️⃣ *Show Hidden Risks* (Khatre)
+3️⃣ *Get Bid Strategy* (BOQ Rates)
+4️⃣ *Action & Documents* (Kya karna hai)
+5️⃣ *Cash Flow Check* (Working capital)
+6️⃣ *View Profit & Cost* (Estimate)
+7️⃣ *Full Report* (Sab ek saath)
+8️⃣ *Download PDF* ⬇️
 
-Seedha apna sawaal bhi pooch sakte ho 🙂"""
+👉 *Sirf 1, 2, 3... type karke bhej do!*"""
 
         send_whatsapp_message(phone_number, verdict)
 
@@ -745,19 +827,18 @@ def handle_menu(user: User, intent: str, text: str, latest_analysis: Analysis, d
 
     # Unknown intent inside menu
     send_whatsapp_message(user.phone_number,
-        "Samjha nahi. Type karo:\n\n"
-        "• \"eligibility\" — qualify check\n"
-        "• \"risks\" — hidden risks\n"
-        "• \"boq\" — bid strategy\n"
-        "• \"documents\" — action plan\n"
-        "• \"cash flow\" — capital check\n"
-        "• \"cost\" — cost estimate\n"
-        "• \"full report\" — sab ek saath\n"
-        "• \"pdf\" — download report\n\n"
-        "Ya:\n"
-        "• \"plan\" — subscription plans\n"
-        "• \"history\" — past analyses\n"
-        "• \"preference update\" — change alerts")
+        "Samjha nahi. Sirf option ka *Number* reply karo:\n\n"
+        "1️⃣ Am I Eligible?\n"
+        "2️⃣ Show Hidden Risks\n"
+        "3️⃣ Get Bid Strategy\n"
+        "4️⃣ Action & Documents\n"
+        "5️⃣ Cash Flow Check\n"
+        "6️⃣ View Profit & Cost\n"
+        "7️⃣ Full Report\n"
+        "8️⃣ Download PDF\n\n"
+        "Ya type karo:\n"
+        "💳 *Plan* — Upgrade karne ke liye\n"
+        "⚙️ *Alerts* — Preferences set karne ke liye")
 
 
 def generate_and_send_pdf(user: User, data: dict):
