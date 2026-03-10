@@ -21,6 +21,7 @@ class User(Base):
     phone_number = Column(String, primary_key=True, index=True)
     language_preference = Column(String, default="Hinglish")
     conversation_state = Column(String, default="new")
+    referred_by = Column(String, nullable=True)  # Phone number of the referrer
     # new | awaiting_location | awaiting_work_type | awaiting_value_range |
     # awaiting_departments | awaiting_alert_freq | ready | analyzing | menu
 

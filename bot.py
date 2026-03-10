@@ -123,6 +123,7 @@ def detect_intent(text: str) -> str:
     if matchesAny(["cost", "estimat", "kitna lagega", "kharcha", "est"]): return "menu_6"
     if matchesAny(["poora", "full", "sab", "all", "report", "detail"]): return "menu_7"
     if matchesAny(["pdf", "download", "file"]): return "menu_8"
+    if matchesAny(["share", "refer", "friend", "invite", "dost"]): return "menu_9"
     if matchesAny(["competi", "kitne log", "kon kon"]): return "menu_competitor"
     if matchesAny(["subcontract", "thekedar", "dusra"]): return "menu_subcontractor"
     if matchesAny(["sumary", "summary", "kya hai", "short"]): return "menu_summary"
@@ -169,7 +170,32 @@ def detect_intent(text: str) -> str:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def handle_incoming_message(phone_number: str, text: str, media_url: str, db: Session, background_tasks):
-    user = get_or_create_user(db, phone_number, text)
+    # ── Onboarding Capture (Referrals) ──
+    # If a new user clicks a referral link, their first message will contain "Referral from"
+    referrer_phone = None
+    if "referral from" in text.lower():
+        import re
+        # Find the phone number at the end of the text string
+        match = re.search(r'referral from\s*([+\d]+)', text, re.IGNORECASE)
+        if match:
+            referrer_phone = match.group(1).strip()
+            # Clean up the text so intent detection works normally
+            text = text.replace(match.group(0), "").strip()
+            if not text: text = "hi"
+
+    user = db.query(User).filter(User.phone_number == phone_number).first()
+    if not user:
+        lang = detect_language(text)
+        user = User(
+            phone_number=phone_number,
+            language_preference=lang,
+            conversation_state="new",
+            referred_by=referrer_phone,  # Save the referrer here!
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
     text_lower = text.lower().strip()
 
     # ── PDF at any point ──
@@ -703,13 +729,36 @@ def process_pdf_background(phone_number: str, media_url: str):
         analysis_json = analyze_tender_document(pdf_path, user.language_preference)
 
         # Deduct credit
-        if user.free_analyses_used < 1:
-            user.free_analyses_used = 1
+        # Increment usage AFTER successful analysis
+        if user.subscription_type == "free" and user.paid_credits_remaining == 0:
+            user.free_analyses_used += 1
         elif user.paid_credits_remaining > 0:
             user.paid_credits_remaining -= 1
+        elif user.subscription_type == "monthly" and user.total_analyses_done < 30:
+            # Monthly users have a soft limit, but we don't "deduct" a credit in the same way
+            pass # No explicit credit deduction for monthly, just track total_analyses_done
 
         user.total_analyses_done += 1
         user.conversation_state = "menu"
+        db.commit() # Commit user state and credit changes here
+
+        # ── Viral Referral Credit Award System (Anti-Abuse Checked) ──
+        # Award credit ONLY IF this is their very first successful analysis
+        if user.total_analyses_done == 1 and user.referred_by:
+            # Prevent self-referrals
+            if user.referred_by != user.phone_number:
+                referrer = db.query(User).filter(User.phone_number == user.referred_by).first()
+                if referrer:
+                    referrer.paid_credits_remaining += 1
+                    db.commit()
+                    # Notify the referrer!
+                    reward_msg = (
+                        "🎉 *Badhai Ho!*\n\n"
+                        f"Aapke dost ne abhi TenderBot ka use kiya.\n"
+                        f"Aapke account mein *+1 FREE Paid Analysis* add kar diya gaya hai! 🎁\n\n"
+                        f"Aap abhi koi bhi naya Tender PDF bhej kar isko use kar sakte hain."
+                    )
+                    send_whatsapp_message(referrer.phone_number, reward_msg)
 
         new_analysis = Analysis(
             user_phone=user.phone_number,
@@ -752,6 +801,7 @@ Kya dekhna chahte ho?
 6️⃣ *View Profit & Cost* (Estimate)
 7️⃣ *Full Report* (Sab ek saath)
 8️⃣ *Download PDF* ⬇️
+9️⃣ *Share & Earn* (Free credits) 🎁
 
 👉 *Sirf 1, 2, 3... type karke bhej do!*"""
 
@@ -804,6 +854,10 @@ def handle_menu(user: User, intent: str, text: str, latest_analysis: Analysis, d
         "menu_verdict": "part10_recommendation",
     }
 
+    if intent == "menu_9":
+        send_share_message(user, db)
+        return
+
     if intent in section_map:
         content = data.get(section_map[intent], "Information available nahi hai.")
         send_long_message(user.phone_number, content)
@@ -835,10 +889,46 @@ def handle_menu(user: User, intent: str, text: str, latest_analysis: Analysis, d
         "5️⃣ Cash Flow Check\n"
         "6️⃣ View Profit & Cost\n"
         "7️⃣ Full Report\n"
-        "8️⃣ Download PDF\n\n"
+        "8️⃣ Download PDF\n"
+        "9️⃣ Share & Earn 🎁\n\n"
         "Ya type karo:\n"
         "💳 *Plan* — Upgrade karne ke liye\n"
         "⚙️ *Alerts* — Preferences set karne ke liye")
+
+def send_share_message(user: User, db: Session):
+    """Generates the viral referral loop message and link."""
+    # Use the official Twilio WhatsApp number if RAILWAY_URL isn't strictly needed for wa.me
+    # but we need the raw number without 'whatsapp:' prefix.
+    bot_number = TWILIO_WHATSAPP_NUMBER.replace("whatsapp:", "")
+    
+    # URL Encode the payload
+    import urllib.parse
+    payload = f"Hi TenderBot! Referral from {user.phone_number}"
+    encoded_payload = urllib.parse.quote(payload)
+    
+    wa_link = f"https://wa.me/{bot_number}?text={encoded_payload}"
+    
+    explanation = (
+        "🎁 *Want FREE Paid Analysis credits?*\n\n"
+        "Share TenderBot with your contractor friends! "
+        "Jaise hi aapka dost apna pehla PDF analyze karega, "
+        "aapke account mein *+1 Free Analysis* add ho jayega!\n\n"
+        "👇 *Neeche wale message ko copy karke WhatsApp Groups mein forward karo:* 👇"
+    )
+    send_whatsapp_message(user.phone_number, explanation)
+    
+    time.sleep(2)
+    
+    forwardable_msg = (
+        "🏗️ *Bhai, yeh AI TenderBot try karo!*\n\n"
+        "Government tenders ka PDF isko bhejo, aur yeh 3 minute mein poora details nikal deta hai:\n"
+        "✅ Eligibility check\n"
+        "✅ BOQ Rates & Profit Estimate\n"
+        "✅ Hidden Risks & Deadlines\n\n"
+        "Pehla analysis bilkul *FREE* hai! Yahan click karke message bhejo:\n"
+        f"👉 {wa_link}"
+    )
+    send_whatsapp_message(user.phone_number, forwardable_msg)
 
 
 def generate_and_send_pdf(user: User, data: dict):
