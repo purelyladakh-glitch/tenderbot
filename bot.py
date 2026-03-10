@@ -10,6 +10,7 @@ from database import User, Analysis, Payment, ContractorPreference, TenderAlertL
 from payments import generate_payment_link
 from analyzer import analyze_tender_document, is_pdf_too_large
 from utils import download_twilio_media, detect_language, generate_pdf_report
+from strings import get_string, build_menu
 from portals import (
     detect_states_from_text, detect_work_types_from_text,
     detect_departments_from_text, parse_value_range,
@@ -202,10 +203,33 @@ def handle_incoming_message(phone_number: str, text: str, media_url: str, db: Se
     if media_url:
         handle_new_pdf(user, media_url, db, background_tasks)
         return
+    
+    # ── State Machine: Onboarding -> Language -> Location -> Work -> etc. ──
+    state = user.conversation_state
 
-    state = user.conversation_state or "new"
+    # === NEW: Language Selection ===
+    if state == "new":
+        if text_lower in ["1", "english", "en"]:
+            user.language_preference = "en"
+        elif text_lower in ["2", "hindi", "hi"]:
+            user.language_preference = "hi"
+        elif text_lower in ["3", "hinglish"]:
+            user.language_preference = "hinglish"
+        elif text_lower in ["4", "marathi", "mr"]:
+            user.language_preference = "mr"
+        else:
+            # First time ever messaging the bot
+            welcome_msg = get_string("hinglish", "welcome_new") + "\n\n" + get_string("hinglish", "lang_menu")
+            send_whatsapp_message(user.phone_number, welcome_msg)
+            return
+            
+        # They picked a language, save and move to 'ready'
+        user.conversation_state = "ready"
+        db.commit()
+        send_whatsapp_message(user.phone_number, get_string(user.language_preference, "lang_set_success"))
+        return
 
-    # ── Preference setup multi-step conversation ──
+    # Handle Alert setup states
     if state.startswith("awaiting_"):
         handle_preference_step(user, text, db)
         return
@@ -213,7 +237,7 @@ def handle_incoming_message(phone_number: str, text: str, media_url: str, db: Se
     # ── Analyzing — don't interrupt ──
     if state == "analyzing":
         send_whatsapp_message(user.phone_number,
-            "Aapka tender abhi analyze ho raha hai... thoda wait karo ⏳")
+            get_string(user.language_preference, "analyzing_wait"))
         return
 
     # ── Handling Payment Choice State ──
@@ -266,11 +290,14 @@ def handle_incoming_message(phone_number: str, text: str, media_url: str, db: Se
     if intent == "search":
         handle_search(user, text, db)
         return
+    if intent == "change_language":
+        change_language_request(user, db)
+        return
 
     # State-specific handling
-    if state == "new":
-        send_welcome(user)
-        return
+    # The 'new' state is now handled above for language selection.
+    # If user is in 'ready' or 'menu' state, and sends a PDF, it's handled by media_url check.
+    # If user is in 'ready' or 'menu' state, and sends text, it's handled by detect_intent.
 
     if state in ("ready", "menu"):
         latest = db.query(Analysis).filter(
@@ -281,36 +308,22 @@ def handle_incoming_message(phone_number: str, text: str, media_url: str, db: Se
             handle_menu(user, intent, text_lower, latest, db)
         else:
             send_whatsapp_message(user.phone_number,
-                "Tender PDF bhejo — main 3 minute mein poora analysis de dunga! 📄")
+                get_string(user.language_preference, "send_pdf_first"))
         return
 
-    # Fallback
-    send_welcome(user)
+    # Fallback for unrecognized input in any state not explicitly handled
+    send_whatsapp_message(user.phone_number, get_string(user.language_preference, "unrecognized"))
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # WELCOME
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def send_welcome(user: User):
-    msg = """Namaste! 🙏 Main TenderBot hoon.
-Government tender ka poora analysis 3 minute mein kar deta hoon.
-
-Kya karta hoon:
-✅ Tender summary
-✅ Qualify karte ho ya nahi
-✅ Hidden risks and conditions
-✅ BOQ rates and bid guidance
-✅ Project cost estimate
-✅ Cash flow analysis
-✅ Documents checklist
-✅ Day by day action plan
-
-🎁 Pehla analysis bilkul FREE hai.
-📄 Bas tender PDF bhejo.
-
-Ya preferences set karo —
-type karo: "alert chahiye"
-aur main aapke liye tenders dhunduga! 🔍"""
+    # This function is now primarily for the initial welcome after language selection,
+    # or if a user explicitly restarts. The very first message for a new user
+    # is handled by the 'new' state logic in handle_incoming_message.
+    msg = get_string(user.language_preference, "welcome_message")
     send_whatsapp_message(user.phone_number, msg)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -320,19 +333,7 @@ aur main aapke liye tenders dhunduga! 🔍"""
 def start_preference_setup(user: User, db: Session):
     user.conversation_state = "awaiting_location"
     db.commit()
-    msg = """📍 *Aap kahan kaam karte ho?*
-(Sirf *Number* reply karo. Multiple ke liye comma lagao, jaise: 2, 4):
-
-1️⃣ All India 🇮🇳
-2️⃣ Maharashtra 🏙️
-3️⃣ Delhi NCR 🏛️
-4️⃣ Punjab & Haryana 🌾
-5️⃣ J&K & Ladakh ⛰️
-6️⃣ Uttar Pradesh 🕌
-7️⃣ Karnataka 🏢
-8️⃣ Gujarat 🏭
-
-👉 *Ya apna State/City type karo!*"""
+    msg = get_string(user.language_preference, "pref_location_prompt")
     send_whatsapp_message(user.phone_number, msg)
 
 
@@ -359,7 +360,7 @@ def handle_preference_step(user: User, text: str, db: Session):
 
         if not states:
             send_whatsapp_message(user.phone_number,
-                "Samjha nahi. Sirf Option Number bhi bhej sakte ho (1 se 8 tak).")
+                get_string(user.language_preference, "pref_location_error"))
             return
 
         pref.states_list = json.dumps(states)
@@ -371,22 +372,14 @@ def handle_preference_step(user: User, text: str, db: Session):
 
         ladakh_note = ""
         if is_ladakh:
-            ladakh_note = "\n\n⛰️ Ladakh selected — BRO, NHIDCL, MES, LAHDC tenders bhi tracked honge!"
+            ladakh_note = get_string(user.language_preference, "pref_ladakh_note")
 
         user.conversation_state = "awaiting_work_type"
         db.commit()
 
         send_whatsapp_message(user.phone_number,
-            f"✅ Location noted: {names}{ladakh_note}\n\n"
-            f"🔨 *Kaunsa kaam karte ho?*\n"
-            f"(Sirf *Number* reply karo. Multiple = 1, 3):\n\n"
-            f"1️⃣ Roads & Highways 🛣️\n"
-            f"2️⃣ Building / Civil Works 🏗️\n"
-            f"3️⃣ Electrical Works ⚡\n"
-            f"4️⃣ Water Supply / Plumbing 💧\n"
-            f"5️⃣ Bridges & Flyovers 🌉\n"
-            f"6️⃣ Solar & Renewable ☀️\n\n"
-            f"👉 *Ya apna work type likh do!*")
+            get_string(user.language_preference, "pref_location_noted").format(names=names, ladakh_note=ladakh_note) +
+            "\n\n" + get_string(user.language_preference, "pref_work_type_prompt"))
 
     elif state == "awaiting_work_type":
         added_work = []
@@ -406,15 +399,8 @@ def handle_preference_step(user: User, text: str, db: Session):
         db.commit()
 
         send_whatsapp_message(user.phone_number,
-            f"✅ Work types noted: {', '.join(work_types)}\n\n"
-            f"💰 *Kitni value ke tenders chahiye?*\n"
-            f"(Sirf *Number* reply karo):\n\n"
-            f"1️⃣ Upto 50 Lakh\n"
-            f"2️⃣ 50 Lakh - 5 Crore\n"
-            f"3️⃣ 5 Crore - 20 Crore\n"
-            f"4️⃣ 20 Crore - 100 Crore\n"
-            f"5️⃣ All Amounts (Sabhi)\n\n"
-            f"👉 *Ya apni range likho (Jaise: \"2 Cr se 5 Cr\")*")
+            get_string(user.language_preference, "pref_work_type_noted").format(work_types=', '.join(work_types)) +
+            "\n\n" + get_string(user.language_preference, "pref_value_range_prompt"))
 
     elif state == "awaiting_value_range":
         min_val, max_val = 0, 500000000
@@ -436,16 +422,8 @@ def handle_preference_step(user: User, text: str, db: Session):
         max_disp = format_inr(max_val)
 
         send_whatsapp_message(user.phone_number,
-            f"✅ Value range: {min_disp} to {max_disp}\n\n"
-            f"🏢 *Kaunse depts ke tenders chahiye?*\n"
-            f"(Sirf *Number* reply karo. Jaise: 1, 2):\n\n"
-            f"1️⃣ Sabhi Sarkari (All Gov) 🏛️\n"
-            f"2️⃣ PWD / CPWD / Municipal 🏢\n"
-            f"3️⃣ Highways (NHAI, BRO, NHIDCL) 🛣️\n"
-            f"4️⃣ Railways & Metro 🚂\n"
-            f"5️⃣ Jal Board / Water Depts 💧\n"
-            f"6️⃣ Defence / MES 🛡️\n\n"
-            f"👉 *Ya apna dept likh do!*")
+            get_string(user.language_preference, "pref_value_range_noted").format(min_disp=min_disp, max_disp=max_disp) +
+            "\n\n" + get_string(user.language_preference, "pref_departments_prompt"))
 
     elif state == "awaiting_departments":
         added_depts = []
@@ -467,12 +445,8 @@ def handle_preference_step(user: User, text: str, db: Session):
         db.commit()
 
         send_whatsapp_message(user.phone_number,
-            f"✅ Departments: {', '.join(depts)}\n\n"
-            f"⏰ *Kitni baar alert chahiye?*\n"
-            f"(Sirf *Number* reply karo):\n\n"
-            f"1️⃣ Instant 🚀 (Naya aate hi turant alert)\n"
-            f"2️⃣ Daily Morning ☀️ (Subah 8 baje digest)\n"
-            f"3️⃣ Weekly 📅 (Monday summary)")
+            get_string(user.language_preference, "pref_departments_noted").format(departments=', '.join(depts)) +
+            "\n\n" + get_string(user.language_preference, "pref_alert_freq_prompt"))
 
     elif state == "awaiting_alert_freq":
         freq = "daily"
@@ -496,25 +470,29 @@ def handle_preference_step(user: User, text: str, db: Session):
         state_names = get_state_names(states)
         portals = get_portals_for_states(states)
 
-        freq_display = {"instant": "Turant — real time", "daily": "Daily 8 AM digest", "weekly": "Weekly Monday summary"}
+        freq_display = {
+            "instant": get_string(user.language_preference, "freq_instant"),
+            "daily": get_string(user.language_preference, "freq_daily"),
+            "weekly": get_string(user.language_preference, "freq_weekly")
+        }
 
-        msg = f"""✅ Preferences save ho gayi!
-
-📍 LOCATIONS: {state_names}
-🔨 WORK TYPES: {', '.join(work_types)}
-💰 VALUE: {format_inr(pref.min_value)} — {format_inr(pref.max_value)}
-🏢 DEPARTMENTS: {', '.join(departments)}
-⏰ ALERTS: {freq_display.get(freq, freq)}
-📡 {len(portals)} portals tracked
-
-Matching tenders milenge!
-
-Change karna ho kabhi bhi:
-Type karo "preference update"
-
-Ab tender PDF bhejo ya wait karo alerts ke liye! 📄"""
+        msg = get_string(user.language_preference, "pref_summary").format(
+            state_names=state_names,
+            work_types=', '.join(work_types),
+            min_value=format_inr(pref.min_value),
+            max_value=format_inr(pref.max_value),
+            departments=', '.join(departments),
+            alerts=freq_display.get(freq, freq),
+            num_portals=len(portals)
+        )
 
         send_whatsapp_message(user.phone_number, msg)
+
+def change_language_request(user: User, db: Session):
+    user.conversation_state = "new"  # Loop them back to the language picker
+    db.commit()
+    msg = get_string(user.language_preference, "lang_menu")
+    send_whatsapp_message(user.phone_number, msg)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # PLANS & PAYMENT
@@ -523,18 +501,7 @@ Ab tender PDF bhejo ya wait karo alerts ke liye! 📄"""
 def show_plans(user: User, db: Session):
     user.conversation_state = "awaiting_payment_choice"
     db.commit()
-    msg = """⭐ *TenderBot Plans:*
-
-1️⃣ *Buy 1 Report (₹99)*
-Best for occasional use. Valid 48 hrs.
-
-2️⃣ *Starter Pack - 5 Reports (₹399) 🔥 Best Value*
-Live searches, full analysis reports. Valid 60 days.
-
-3️⃣ *Unlimited Pro + Alerts (₹799/month)*
-30 reports + Unlimited AI alert analysis. Bot hunts tenders for you!
-
-👉 *Kaunsa plan chahiye? Sirf Number reply karo!*"""
+    msg = get_string(user.language_preference, "plan_options")
     send_whatsapp_message(user.phone_number, msg)
 
 
@@ -546,8 +513,12 @@ def handle_buy(user: User, intent: str, db: Session):
     amount, plan_type, desc = amount_map.get(intent, (99, "single", "1 Tender Analysis"))
 
     # Show plan details
-    plan_msgs = {"buy_single": SINGLE_PLAN_MSG, "buy_pack": PACK_PLAN_MSG, "buy_monthly": MONTHLY_PLAN_MSG}
-    send_whatsapp_message(user.phone_number, plan_msgs.get(intent, SINGLE_PLAN_MSG))
+    plan_msgs = {
+        "buy_single": get_string(user.language_preference, "single_plan_msg"),
+        "buy_pack": get_string(user.language_preference, "pack_plan_msg"),
+        "buy_monthly": get_string(user.language_preference, "monthly_plan_msg")
+    }
+    send_whatsapp_message(user.phone_number, plan_msgs.get(intent, get_string(user.language_preference, "single_plan_msg")))
 
     # Generate payment link
     payment = Payment(user_phone=user.phone_number, amount=amount, plan_type=plan_type, status="created")
@@ -561,27 +532,31 @@ def handle_buy(user: User, intent: str, db: Session):
 
     time.sleep(1)
     send_whatsapp_message(user.phone_number,
-        f"UPI Payment Link:\n{link}\n\nPayment hote hi turant unlock ho jayega. 🔓")
+        get_string(user.language_preference, "payment_link_message").format(link=link))
 
 
 def show_balance(user: User):
-    plan_names = {"free": "Free", "single": "₹99 Single", "pack": "₹399 Pack", "monthly": "₹799 Monthly"}
-    plan_name = plan_names.get(user.subscription_type, "Free")
+    plan_names = {
+        "free": get_string(user.language_preference, "plan_free"),
+        "single": get_string(user.language_preference, "plan_single"),
+        "pack": get_string(user.language_preference, "plan_pack"),
+        "monthly": get_string(user.language_preference, "plan_monthly")
+    }
+    plan_name = plan_names.get(user.subscription_type, get_string(user.language_preference, "plan_free"))
 
     expiry = ""
     if user.subscription_expiry:
         days_left = (user.subscription_expiry - datetime.utcnow()).days
-        expiry = f"\n📅 Expiry: {user.subscription_expiry.strftime('%d %b %Y')} ({days_left} din baaki)"
+        expiry = get_string(user.language_preference, "balance_expiry").format(
+            expiry_date=user.subscription_expiry.strftime('%d %b %Y'), days_left=days_left)
 
-    msg = f"""📊 Aapka Account:
-
-Plan: {plan_name}
-Credits: {user.paid_credits_remaining}
-Free analysis: {'Used ✓' if user.free_analyses_used >= 1 else 'Available ✅'}
-Total analyses done: {user.total_analyses_done}{expiry}
-
-Upgrade ya renew karna hai?
-Type karo "plan" ya "799 wala"""
+    msg = get_string(user.language_preference, "balance_details").format(
+        plan_name=plan_name,
+        credits=user.paid_credits_remaining,
+        free_analysis_status=get_string(user.language_preference, "used") if user.free_analyses_used >= 1 else get_string(user.language_preference, "available"),
+        total_analyses=user.total_analyses_done,
+        expiry_info=expiry
+    )
 
     send_whatsapp_message(user.phone_number, msg)
 
@@ -595,8 +570,7 @@ def pause_alerts(user: User, db: Session):
     pref.pause_until = datetime.utcnow() + timedelta(days=7)
     db.commit()
     send_whatsapp_message(user.phone_number,
-        "✅ Alerts 7 din ke liye pause ho gaye.\n"
-        "Resume karne ke liye type karo: \"alerts shuru karo\"")
+        get_string(user.language_preference, "alerts_paused"))
 
 
 def resume_alerts(user: User, db: Session):
@@ -605,8 +579,7 @@ def resume_alerts(user: User, db: Session):
     pref.pause_until = None
     db.commit()
     send_whatsapp_message(user.phone_number,
-        "✅ Alerts fir shuru ho gaye!\n"
-        "Matching tenders milte rahenge. 🔔")
+        get_string(user.language_preference, "alerts_resumed"))
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # HISTORY
@@ -618,13 +591,13 @@ def show_history(user: User, db: Session):
     ).order_by(Analysis.id.desc()).limit(5).all()
 
     if not analyses:
-        send_whatsapp_message(user.phone_number, "Koi past analysis nahi mila. Tender PDF bhejo!")
+        send_whatsapp_message(user.phone_number, get_string(user.language_preference, "no_past_analysis"))
         return
 
-    msg = "📋 Aapke recent analyses:\n\n"
+    msg = get_string(user.language_preference, "recent_analyses_header") + "\n\n"
     for i, a in enumerate(analyses, 1):
         msg += f"{i}. {a.tender_summary} — {a.created_at.strftime('%d %b %Y')}\n"
-    msg += f"\nTotal: {user.total_analyses_done} analyses kiye hain."
+    msg += get_string(user.language_preference, "total_analyses_done").format(total=user.total_analyses_done)
     send_whatsapp_message(user.phone_number, msg)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -634,7 +607,7 @@ def show_history(user: User, db: Session):
 def handle_search(user: User, text: str, db: Session):
     """Phase 1 search: matches keywords to relevant portal URLs."""
     results = search_portals_for_query(text)
-    msg = format_search_results(results)
+    msg = format_search_results(results, user.language_preference)
     send_whatsapp_message(user.phone_number, msg)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -659,28 +632,17 @@ def handle_new_pdf(user: User, media_url: str, db: Session, background_tasks):
     db.commit()
 
     send_whatsapp_message(user.phone_number,
-        "Tender mil gaya! 📄\n"
-        "Poora analyze kar raha hoon —\n"
-        "3 minute mein complete report bhejta hoon. ⏳")
+        get_string(user.language_preference, "pdf_received_analyzing"))
 
     time.sleep(1)
     send_whatsapp_message(user.phone_number,
-        "Jab tak main analyze karta hoon —\n"
-        "yeh documents ready hain aapke paas?\n\n"
-        "□ ITR last 3 years\n"
-        "□ CA certified balance sheet\n"
-        "□ Registration certificate\n"
-        "□ GST certificate\n"
-        "□ Completion certificates of past work\n"
-        "□ Solvency certificate\n\n"
-        "Jo ready nahi hai batao —\n"
-        "main deadline check karke batata hoon.")
+        get_string(user.language_preference, "documents_checklist_prompt"))
 
     background_tasks.add_task(process_pdf_background, user.phone_number, media_url)
 
 
 def request_payment(user: User, db: Session):
-    msg = "Aapka free analysis use ho gaya. ✓\n\n"
+    msg = get_string(user.language_preference, "free_analysis_used") + "\n\n"
 
     # Show comparison and generate ₹99 link as default
     payment = Payment(user_phone=user.phone_number, amount=99, plan_type="single", status="created")
@@ -692,16 +654,7 @@ def request_payment(user: User, db: Session):
     payment.razorpay_order_id = f"PAY_{payment.id}"
     db.commit()
 
-    msg += f"""Agle tender ke liye:
-
-1️⃣ ₹99  — 1 Analysis 📄
-2️⃣ ₹399 — 5 Analyses Pack ⭐ (Best Value)
-3️⃣ ₹799 — Monthly Pro + Alerts 🚀
-
-👉 *Abhi ₹99 se shuru karne ke liye link pe click karein:*
-{link_99}
-
-👉 *Bade plan (2 ya 3) ke liye sirf Number reply karo!*"""
+    msg += get_string(user.language_preference, "payment_options_prompt").format(link_99=link_99)
 
     user.conversation_state = "awaiting_payment_choice"
     db.commit()
@@ -718,13 +671,12 @@ def process_pdf_background(phone_number: str, media_url: str):
 
         if is_pdf_too_large(pdf_path):
             send_whatsapp_message(phone_number,
-                "PDF bahut bada hai (>50MB).\n"
-                "Compress karke bhejo ya portal ka link do.")
+                get_string(user.language_preference, "pdf_too_large"))
             user.conversation_state = "ready"
             db.commit()
             return
 
-        send_whatsapp_message(phone_number, "Still analyzing... almost done ⏳")
+        send_whatsapp_message(phone_number, get_string(user.language_preference, "still_analyzing"))
 
         analysis_json = analyze_tender_document(pdf_path, user.language_preference)
 
