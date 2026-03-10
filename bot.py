@@ -16,6 +16,7 @@ from portals import (
     get_state_names, get_portals_for_states,
     format_ladakh_alert, format_free_alert, format_pack_alert, format_monthly_alert,
     PLAN_COMPARISON, SINGLE_PLAN_MSG, PACK_PLAN_MSG, MONTHLY_PLAN_MSG, STATES,
+    search_portals_for_query, format_search_results,
 )
 
 load_dotenv()
@@ -524,18 +525,10 @@ def show_history(user: User, db: Session):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def handle_search(user: User, text: str, db: Session):
-    # Check subscription for search access
-    if user.subscription_type not in ("pack", "monthly"):
-        send_whatsapp_message(user.phone_number,
-            "🔍 Search feature ₹399 Pack ya ₹799 Monthly mein available hai.\n\n"
-            "Upgrade karo search access ke liye.\n"
-            "Type karo: \"plan\"")
-        return
-
-    send_whatsapp_message(user.phone_number,
-        "🔍 Search feature coming soon!\n"
-        "Abhi ke liye eprocure.gov.in pe manually search karo.\n"
-        "Ya tender PDF bhejo — main analyze kar dunga!")
+    """Phase 1 search: matches keywords to relevant portal URLs."""
+    results = search_portals_for_query(text)
+    msg = format_search_results(results)
+    send_whatsapp_message(user.phone_number, msg)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # PDF HANDLING

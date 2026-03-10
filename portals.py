@@ -652,3 +652,144 @@ INTELLIGENCE:
 
 Ek ₹50 lakh tender jeeto —
 62x return mil gaya. 🎯"""
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# SEARCH — Phase 1 (Portal URL matching)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Work type → relevant central portals mapping
+WORK_PORTAL_MAP = {
+    "road": ["BRO", "NHAI", "NHIDCL", "CPWD"],
+    "highway": ["NHAI", "NHIDCL", "BRO"],
+    "bridge": ["BRO", "NHAI", "NHIDCL", "CPWD"],
+    "tunnel": ["BRO", "NHIDCL", "NHAI"],
+    "rcc": ["CPWD", "CPPP"],
+    "building": ["CPWD", "MES", "CPPP"],
+    "power": ["NTPC", "PGCIL", "SECI"],
+    "solar": ["SECI"],
+    "electrical": ["PGCIL", "SECI"],
+    "railway": ["IREPS"],
+    "rail": ["IREPS"],
+    "metro": ["CPPP"],
+    "water": ["CPPP"],
+    "airport": ["AAI"],
+    "oil": ["ONGC"],
+    "coal": ["CIL"],
+    "nuclear": ["NPCIL"],
+    "defence": ["MES"],
+    "army": ["MES"],
+    "military": ["MES"],
+    "cantonment": ["MES"],
+}
+
+
+def search_portals_for_query(query: str) -> dict:
+    """
+    Phase 1 search: match query keywords to relevant portals.
+    Returns dict with 'state_portals', 'central_portals', 'tips'.
+    """
+    query_lower = query.lower().strip()
+    # Remove "search", "dhundo", "find" prefix
+    for prefix in ["search ", "dhundo ", "find ", "koi naya tender hai ", "koi tender hai "]:
+        if query_lower.startswith(prefix):
+            query_lower = query_lower[len(prefix):]
+
+    result = {
+        "state_portals": [],
+        "central_portals": [],
+        "keyword": query_lower,
+        "tips": [],
+    }
+
+    # Detect states from query
+    matched_states = detect_states_from_text(query_lower)
+
+    # Get state-specific portals
+    seen = set()
+    for state_key in matched_states:
+        state = STATES.get(state_key)
+        if state:
+            for url in state.get("portals", []):
+                if url not in seen:
+                    result["state_portals"].append({
+                        "name": state["name"],
+                        "url": url,
+                    })
+                    seen.add(url)
+
+    # Detect work-type related central portals
+    for work_kw, portal_codes in WORK_PORTAL_MAP.items():
+        if work_kw in query_lower:
+            for cp in CENTRAL_PORTALS:
+                if cp["code"] in portal_codes and cp["url"] not in seen:
+                    result["central_portals"].append({
+                        "name": cp["name"],
+                        "url": cp["url"],
+                    })
+                    seen.add(cp["url"])
+
+    # Always include eprocure.gov.in (covers everything)
+    eprocure_url = "https://eprocure.gov.in"
+    if eprocure_url not in seen:
+        result["central_portals"].append({
+            "name": "Central Public Procurement Portal (all tenders)",
+            "url": eprocure_url,
+        })
+
+    # Ladakh-specific tips
+    if "ladakh" in query_lower or "leh" in query_lower or "kargil" in query_lower:
+        result["tips"].append("⛰️ Ladakh: BRO aur NHIDCL ke portals zaroor check karo — high value tenders milte hain")
+        result["tips"].append("📝 jktenders.gov.in pe bhi Ladakh ke tenders aate hain")
+
+    # BRO tip for border states
+    if any(kw in query_lower for kw in ["border", "bro", "defence", "army", "military"]):
+        result["tips"].append("🛡️ BRO tenders: Less competition, strategic priority, faster payments")
+
+    return result
+
+
+def format_search_results(results: dict) -> str:
+    """Formats search results into a WhatsApp-friendly message."""
+    keyword = results.get("keyword", "")
+    state_portals = results.get("state_portals", [])
+    central_portals = results.get("central_portals", [])
+    tips = results.get("tips", [])
+
+    if not state_portals and not central_portals:
+        return (
+            f"🔍 \"{keyword}\" ke liye koi specific portal nahi mila.\n\n"
+            f"Yeh try karo:\n"
+            f"→ eprocure.gov.in — All India search\n"
+            f"→ gem.gov.in — Government marketplace\n\n"
+            f"Portal pe search karke PDF milo toh mujhe bhejo — main analyze kar dunga! 📄"
+        )
+
+    msg = f"🔍 \"{keyword}\" ke liye yeh portals check karo:\n\n"
+
+    if state_portals:
+        msg += "📍 STATE PORTALS:\n"
+        for i, p in enumerate(state_portals[:5], 1):
+            msg += f"  {i}. {p['name']}\n     → {p['url']}\n"
+        msg += "\n"
+
+    if central_portals:
+        msg += "🏛️ CENTRAL PORTALS:\n"
+        for i, p in enumerate(central_portals[:5], 1):
+            msg += f"  {i}. {p['name']}\n     → {p['url']}\n"
+        msg += "\n"
+
+    if tips:
+        msg += "💡 TIPS:\n"
+        for tip in tips:
+            msg += f"  {tip}\n"
+        msg += "\n"
+
+    msg += (
+        "In portals pe ja ke search karo.\n"
+        "PDF mila toh mujhe bhejo —\n"
+        "main 3 min mein analyze kar dunga! 📄"
+    )
+
+    return msg
+

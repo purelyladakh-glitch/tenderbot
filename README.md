@@ -1,59 +1,83 @@
-# WhatsApp Tender Analysis Bot
+# TenderBot — WhatsApp Tender Analysis Bot 🤖
 
-Production-ready WhatsApp bot for Indian government contractors that uses AI to analyze tender documents.
+AI-powered WhatsApp bot for Indian government contractors. Send a tender PDF → get complete analysis in 3 minutes.
+
+## Features
+
+- ✅ **9-part Tender Analysis** via Google Gemini 3 Flash
+- ✅ **WhatsApp Interface** via Twilio
+- ✅ **Natural Language** — Hindi, English, Hinglish, regional languages
+- ✅ **All India Coverage** — 28 states, 8 UTs, 20+ central portals
+- ✅ **Ladakh Special Focus** — BRO, NHIDCL, LAHDC, MES tracking
+- ✅ **4-Tier Subscriptions** — Free, ₹99, ₹399, ₹799/month
+- ✅ **Razorpay Payments** — UPI payment links + webhook verification
+- ✅ **PDF Reports** — Downloadable analysis report
+- ✅ **Portal Search** — "SEARCH RCC Ladakh" returns relevant portals
+- ✅ **Preference System** — Natural conversation setup for location, work type, value range
 
 ## Tech Stack
-- Python 3.11, FastAPI
-- SQLite & SQLAlchemy
+
+- Python 3.11 / FastAPI / Uvicorn
+- Google Gemini 3 Flash Preview (AI analysis)
 - Twilio WhatsApp API
-- Google Gemini 3 Flash Preview (`gemini-3-flash-preview`)
-- Razorpay
+- Razorpay (payments)
+- SQLite + SQLAlchemy (database)
+- Railway.app (deployment)
 
-## Setup Instructions
+## Project Structure
 
-### 1. Install Dependencies
-```bash
-pip install -r requirements.txt
+```
+├── main.py          # FastAPI app, webhooks
+├── bot.py           # Conversation engine, state machine, NLP
+├── analyzer.py      # Gemini PDF analysis with retry
+├── portals.py       # India portal database + NLP detection + search
+├── payments.py      # Razorpay integration
+├── database.py      # SQLAlchemy models
+├── prompts.py       # Gemini analysis prompt
+├── utils.py         # PDF download, language detection, PDF report
+├── scraper.py       # Phase 2 scraper framework (NOT ACTIVE)
+├── requirements.txt
+├── Procfile
+├── railway.toml
+└── .python-version
 ```
 
-### 2. Environment Variables
-Copy `.env.example` to `.env` and fill in the actual keys:
-```bash
-cp .env.example .env
+## Environment Variables
+
 ```
-Ensure you provide:
-- `GEMINI_API_KEY`: Google AI studio key.
-- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_NUMBER`: Twilio Sandbox or Prod details.
-- `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`: Razorpay dashboard.
-
-### 3. Run Locally
-```bash
-uvicorn main:app --reload --port 8000
+GEMINI_API_KEY=
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
+RAZORPAY_KEY_ID=
+RAZORPAY_KEY_SECRET=
+RAILWAY_URL=https://your-app.up.railway.app
+DATABASE_URL=sqlite:///./tenderbot.db
+PORT=8000
 ```
 
-### 4. Setting Twilio Webhook (Local Testing)
-Use `ngrok` to expose your local server:
-```bash
-ngrok http 8000
-```
-Copy the ngrok URL and configure your Twilio WhatsApp Sandbox webhook URL as `https://<ngrok-url>/webhook`.
+## Deployment
 
-### 5. Deployment on Railway.app
-- Push this repo to GitHub.
-- Connect the repo to a new Railway project.
-- The platform will auto-detect the `railway.toml` and `Procfile`.
-- Add all Environment Variables in the Railway project settings.
-- Get the Railway URL and set `RAILWAY_URL` respectively in variables.
-- Update your Twilio Webhook URL to point to `https://<railway-url>/webhook`.
+1. Push to GitHub
+2. Connect repo to Railway
+3. Add env variables in Railway dashboard
+4. Railway auto-deploys
+5. Set Twilio webhook: `https://your-domain/webhook`
+6. Set Razorpay webhook: `https://your-domain/payment-webhook`
 
-### 6. Razorpay Webhook
-- In the Razorpay Dashboard, set the Webhook URL as `https://<railway-url>/payment-webhook`.
-- Secret is implicitly taken from `RAZORPAY_KEY_SECRET` or you can define a `RAZORPAY_WEBHOOK_SECRET`.
+## Phase 2 — Automated Scraping (Not Yet Active)
 
-## Application Architecture
-- `main.py` - FastAPI app and webhook endpoints
-- `bot.py` - WhatsApp conversation state machine 
-- `analyzer.py` - Gemini AI analysis module
-- `payments.py` - Razorpay integration module
-- `database.py` - Models and queries
-- `utils.py` / `prompts.py` - AI prompts and generation scripts
+`scraper.py` contains the framework for automated tender portal scraping.
+
+**Requirements for activation:**
+- Separate scraping service (Railway worker dyno)
+- Proxy management for government portals
+- APScheduler for periodic scraping
+- Per-portal HTML parsers
+- Rate limiting and CAPTCHA handling
+
+See `scraper.py` for detailed activation instructions.
+
+## License
+
+Private — All rights reserved.
