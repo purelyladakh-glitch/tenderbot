@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 from database import engine, get_db, Base, Payment, User
-from bot import handle_incoming_message, send_whatsapp_message
+from bot import handle_incoming_message, send_whatsapp_message, handle_payment_success
 from payments import verify_webhook_signature
 
 # Create all tables in sqlite DB automatically
@@ -21,7 +21,11 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
 def read_root():
-    return {"status": "ok", "app": "TenderBot - WhatsApp API Handler"}
+    return {"status": "ok", "app": "TenderBot - WhatsApp Tender Analysis Bot"}
+
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
 
 @app.post("/webhook")
 async def twilio_webhook(request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
@@ -30,13 +34,14 @@ async def twilio_webhook(request: Request, background_tasks: BackgroundTasks, db
     
     phone_number = form_data.get("From", "")
     text = form_data.get("Body", "").strip()
-    media_url = form_data.get("MediaUrl0") # Exists if PDF sent
+    media_url = form_data.get("MediaUrl0")  # Exists if PDF sent
     
-    # Process message or send directly to bot state machine
     handle_incoming_message(phone_number, text, media_url, db, background_tasks)
     
-    # Twilio expects valid XML for the webhook response, sending empty response because we reply async
-    return PlainTextResponse("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>", media_type="text/xml")
+    return PlainTextResponse(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>",
+        media_type="text/xml"
+    )
 
 @app.post("/payment-webhook")
 async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
@@ -45,37 +50,47 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
     signature = request.headers.get("x-razorpay-signature", "")
     
     if not verify_webhook_signature(payload_body, signature):
-         return JSONResponse({"status": "error", "message": "Invalid webhook signature"}, status_code=400)
+        return JSONResponse({"status": "error", "message": "Invalid signature"}, status_code=400)
     
     try:
         data = json.loads(payload_body)
         
-        # Check if payment was successfully captured
         if data.get("event") == "payment.captured":
             payment_entity = data["payload"]["payment"]["entity"]
             
-            # Extract phone directly from notes passed during payment link creation
+            # Get user phone from notes
             notes = payment_entity.get("notes", {})
             phone = notes.get("user_phone")
+            amount_paid = payment_entity.get("amount", 0) / 100  # paise to rupees
             
             user = db.query(User).filter(User.phone_number == phone).first() if phone else None
             
             if user:
-                 amount_paid = payment_entity.get("amount", 0) / 100
-                 
-                 # Adding credits
-                 if amount_paid == 99:
-                     user.paid_credits_remaining += 1
-                 elif amount_paid == 399:
-                     user.paid_credits_remaining += 5
-                 elif amount_paid == 799:
-                     user.subscription_type = "monthly"
-                 
-                 db.commit()
-                 
-                 unlock_msg = f"Payment received! ✅\n{user.paid_credits_remaining} analyses unlock ho gaye.\n\nAgla tender bhejo — main ready hoon! 📄"
-                 send_whatsapp_message(user.phone_number, unlock_msg)
-
+                # Determine plan type from amount
+                if amount_paid == 99:
+                    plan_type = "single"
+                elif amount_paid == 399:
+                    plan_type = "pack"
+                elif amount_paid == 799:
+                    plan_type = "monthly"
+                else:
+                    plan_type = "single"
+                
+                # Use the bot's handler for clean subscription logic
+                handle_payment_success(user, int(amount_paid), plan_type, db)
+                
+                # Update payment record
+                razorpay_id = payment_entity.get("id", "")
+                payment_record = db.query(Payment).filter(
+                    Payment.user_phone == phone,
+                    Payment.status == "created"
+                ).order_by(Payment.id.desc()).first()
+                
+                if payment_record:
+                    payment_record.status = "paid"
+                    payment_record.razorpay_order_id = razorpay_id
+                    db.commit()
+        
         return JSONResponse({"status": "ok"})
     except Exception as e:
         print(f"Webhook error: {e}")
@@ -83,7 +98,5 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
 
 if __name__ == "__main__":
     import uvicorn
-    import os
-    
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
