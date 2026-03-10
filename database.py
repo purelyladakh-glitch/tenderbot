@@ -20,6 +20,8 @@ class User(Base):
 
     phone_number = Column(String, primary_key=True, index=True)
     language_preference = Column(String, default="English")
+    preferred_states = Column(String, default="")  # comma-separated state keys e.g. "7,8"
+    conversation_state = Column(String, default="new")  # new, awaiting_location, ready, analyzing, menu
     free_analyses_used = Column(Integer, default=0) # max 1
     paid_credits_remaining = Column(Integer, default=0)
     subscription_type = Column(String, default="none") # none/single/pack/monthly
