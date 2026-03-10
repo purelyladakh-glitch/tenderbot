@@ -26,7 +26,7 @@ model = genai.GenerativeModel(
     system_instruction=TENDER_ANALYSIS_PROMPT
 )
 
-def is_pdf_too_large(file_path: int, max_size_mb: int = 50) -> bool:
+def is_pdf_too_large(file_path: str, max_size_mb: int = 50) -> bool:
     size_mb = os.path.getsize(file_path) / (1024 * 1024)
     return size_mb > max_size_mb
 

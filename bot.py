@@ -256,18 +256,26 @@ def handle_nlp_menu_routing(user: User, text_lower: str, latest_analysis: Analys
 8️⃣ PDF download"""
 
     if is_pdf_req:
-        send_whatsapp_message(user.phone_number, "Aapki PDF report generate ho rahi hai...")
+        send_whatsapp_message(user.phone_number, "Aapki PDF report generate ho rahi hai... ⏳")
         pdf_path = generate_pdf_report(data, user.phone_number)
         
-        # Note: Sending PDF media correctly on Twilio Sandbox requires a publicly accessible URL.
-        # However, as a bot, if we can't upload to a cloud bucket, we can't send a local file directly.
-        # Assuming the Railway URL can host static files, but for now we'll send a text placeholder
-        # and notify the user about URL requirements.
-        send_whatsapp_message(user.phone_number, "PDF format me file attach ki ja rahi hai! (Local storage Twilio media limit - require cloud bucket to serve URL for Twilio to send)")
         try:
-             os.remove(pdf_path)
-        except:
-             pass
+            # Move pdf to static folder to serve it publicly
+            import shutil
+            os.makedirs("static/pdfs", exist_ok=True)
+            pdf_filename = f"report_{user.phone_number.replace('+', '')}_{int(time.time())}.pdf"
+            new_pdf_path = os.path.join("static", "pdfs", pdf_filename)
+            shutil.move(pdf_path, new_pdf_path)
+            
+            railway_url = os.getenv("RAILWAY_URL", "").rstrip('/')
+            if railway_url:
+                public_pdf_url = f"{railway_url}/static/pdfs/{pdf_filename}"
+                send_whatsapp_message(user.phone_number, "Lijiye aapki PDF report ready hai! 📄", media_url=public_pdf_url)
+            else:
+                send_whatsapp_message(user.phone_number, "PDF backend me save ho gayi, par RAILWAY_URL missing hone ke karan bheji nahi ja saktii.")
+        except Exception as e:
+            print(f"Error serving PDF: {e}")
+            send_whatsapp_message(user.phone_number, "Sorry, PDF attach karne me thoda technical issue aaya.")
     else:
         # Standard disclaimer included inside the gemini response, but we can append if needed
         # WhatsApp message body limit is somewhat forgiving, but safe to send.

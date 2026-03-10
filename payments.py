@@ -29,7 +29,10 @@ def generate_payment_link(amount_in_inr: int, user_phone: str, reference_id: str
             "email": False
         },
         "reminder_enable": False,
-        "reference_id": str(reference_id)
+        "reference_id": str(reference_id),
+        "notes": {
+            "user_phone": user_phone
+        }
     }
     
     try:

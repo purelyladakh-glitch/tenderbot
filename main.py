@@ -1,7 +1,10 @@
 from fastapi import FastAPI, Request, BackgroundTasks, Depends
 from fastapi.responses import PlainTextResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 import json
+import os
+from pathlib import Path
 
 from database import engine, get_db, Base, Payment, User
 from bot import handle_incoming_message, send_whatsapp_message
@@ -11,6 +14,10 @@ from payments import verify_webhook_signature
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="TenderBot")
+
+# Ensure static directory exists for serving PDFs
+Path("static/pdfs").mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
 def read_root():
@@ -47,17 +54,11 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
         if data.get("event") == "payment.captured":
             payment_entity = data["payload"]["payment"]["entity"]
             
-            # The reference_id set during payment_link creation 
-            # might come nested in notes or might be the reference_id attached to the order.
-            # Assuming we set it as description or reference during link creation:
-            # This logic might need slight adjustment based on exact Razorpay payload shape
-            # but conceptually we find the payment ID locally to match.
+            # Extract phone directly from notes passed during payment link creation
+            notes = payment_entity.get("notes", {})
+            phone = notes.get("user_phone")
             
-            # Alternatively look up by amount/phone number if strict matching fails
-            # For this MVP, we match user_phone / amount / status created recently
-            contact = payment_entity.get("contact")
-            
-            user = db.query(User).filter(User.phone_number.contains(contact[-10:])).first() if contact else None
+            user = db.query(User).filter(User.phone_number == phone).first() if phone else None
             
             if user:
                  amount_paid = payment_entity.get("amount", 0) / 100
