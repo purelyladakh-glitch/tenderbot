@@ -1,318 +1,439 @@
 """
-TenderBot — Automated Tender Scraper (Phase 2 Framework)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TenderBot — Background Scraper Worker
+Runs independently of the FastAPI web server.
+Pulls live tenders from government portals, matches them against
+ContractorPreference records, and sends WhatsApp alerts via Twilio.
 
-STATUS: FRAMEWORK ONLY — NOT ACTIVE
-Functions are defined but NOT running.
-Activate in Phase 2 when scraping infrastructure is ready.
-
-REQUIREMENTS FOR ACTIVATION:
-→ Separate scraping service (Railway worker dyno)
-→ Proxy management (rotating proxies for gov portals)
-→ APScheduler or Celery for job scheduling
-→ Redis for job queue (optional)
-→ Rate limiting to avoid portal blocks
-→ Error alerts for failed scrapes
+Deploy on Railway as a separate "Worker" service:
+  python scraper.py
 """
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# IMPORTS (commented — install when activating)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+import os
+import re
+import time
+import json
+import schedule
+import urllib3
+from datetime import datetime
+from dotenv import load_dotenv
 
-# from apscheduler.schedulers.asyncio import AsyncIOScheduler
-# from apscheduler.triggers.cron import CronTrigger
-# from apscheduler.triggers.interval import IntervalTrigger
-# import httpx  # async HTTP client
-# from bs4 import BeautifulSoup
-# import redis
+import requests
+from bs4 import BeautifulSoup
+from sqlalchemy.orm import Session
 
-from portals import STATES, CENTRAL_PORTALS
+from database import SessionLocal, Base, engine, ContractorPreference, TenderRecord, TenderAlertLog, User
+from bot import send_whatsapp_message
+from strings import get_string
 
+load_dotenv()
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# SCRAPER CONFIGURATION
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-SCRAPE_CONFIG = {
-    "high_priority_interval_hours": 6,    # eprocure, BRO, top state portals
-    "medium_priority_interval_hours": 12,  # other state portals
-    "low_priority_interval_hours": 24,     # PSU and department portals
-    "request_timeout_seconds": 30,
-    "max_retries": 3,
-    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    "rate_limit_delay_seconds": 2,  # delay between requests to same portal
-}
-
+# Ensure tables exist
+Base.metadata.create_all(bind=engine)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# SCRAPER FUNCTIONS (not active)
+# PORTAL REGISTRY
+# Each entry: domain, state label, and optional custom parser
+# All NICGEP-standard portals share the same HTML table structure
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-async def scrape_eprocure(keyword: str = None, state: str = None):
-    """
-    Scrapes https://eprocure.gov.in for tenders.
-    
-    HOW IT WOULD WORK:
-    1. POST to eprocure.gov.in/cppp/tendersearch/searchform
-    2. Form data: keyword, state, tender type, date range
-    3. Parse HTML table with BeautifulSoup
-    4. Extract: tender_id, department, description, value, deadline, location
-    5. Store in database tender_listings table
-    6. Match against user preferences
-    7. Send alerts via WhatsApp
-    
-    EXAMPLE:
-    >>> results = await scrape_eprocure(keyword="RCC road", state="Ladakh")
-    >>> # Returns list of tender dicts
-    """
-    # async with httpx.AsyncClient(timeout=SCRAPE_CONFIG["request_timeout_seconds"]) as client:
-    #     form_data = {
-    #         "search_keyword": keyword or "",
-    #         "state": state or "",
-    #         "tender_type": "Open",
-    #     }
-    #     response = await client.post(
-    #         "https://eprocure.gov.in/cppp/tendersearch/searchform",
-    #         data=form_data,
-    #         headers={"User-Agent": SCRAPE_CONFIG["user_agent"]}
-    #     )
-    #     soup = BeautifulSoup(response.text, "html.parser")
-    #     table = soup.find("table", {"id": "tenderTable"})
-    #     tenders = []
-    #     if table:
-    #         for row in table.find_all("tr")[1:]:  # skip header
-    #             cols = row.find_all("td")
-    #             if len(cols) >= 6:
-    #                 tenders.append({
-    #                     "tender_id": cols[0].text.strip(),
-    #                     "department": cols[1].text.strip(),
-    #                     "work_description": cols[2].text.strip(),
-    #                     "value": cols[3].text.strip(),
-    #                     "deadline_date": cols[4].text.strip(),
-    #                     "location": cols[5].text.strip(),
-    #                     "source": "eprocure.gov.in",
-    #                 })
-    #     return tenders
-    pass
-
-
-async def scrape_bro_portal():
-    """
-    Scrapes https://bro.gov.in/tenders for BRO tenders.
-    
-    IMPORTANT FOR LADAKH:
-    → BRO Project Himank (Leh area)
-    → BRO Project Beacon (Zoji La area)  
-    → BRO Project Vijayak (Kargil area)
-    → High value ₹10Cr to ₹500Cr
-    → Less competition than regular PWD
-    
-    HOW IT WOULD WORK:
-    1. GET bro.gov.in/tenders page
-    2. Parse tender listing table
-    3. Extract project name, value, deadline
-    4. Tag with BRO project (Himank/Beacon/Vijayak)
-    5. Send Ladakh-specific alert format
-    """
-    # async with httpx.AsyncClient() as client:
-    #     response = await client.get(
-    #         "https://bro.gov.in/tenders",
-    #         headers={"User-Agent": SCRAPE_CONFIG["user_agent"]}
-    #     )
-    #     soup = BeautifulSoup(response.text, "html.parser")
-    #     # Parse BRO tender listings
-    #     # Return list of tender dicts
-    pass
-
-
-async def scrape_state_portal(state_key: str):
-    """
-    Generic state portal scraper.
-    Each state has different HTML structure, so this would
-    need per-state parsing adapters.
-    
-    HOW IT WOULD WORK:
-    1. Look up portal URL from STATES[state_key]
-    2. GET the portal page
-    3. Use state-specific parser
-    4. Extract tender data
-    5. Return standardized tender dicts
-    """
-    # state = STATES.get(state_key)
-    # if not state:
-    #     return []
-    # portal_url = state["portals"][0]
-    # async with httpx.AsyncClient() as client:
-    #     response = await client.get(portal_url)
-    #     # Parse with state-specific adapter
-    #     # Return tender list
-    pass
-
+SCRAPE_PORTALS = [
+    # --- Priority: Ladakh & J&K ---
+    {"domain": "ladakhtenders.gov.in", "state": "Ladakh",            "type": "nicgep"},
+    {"domain": "jktenders.gov.in",     "state": "Jammu & Kashmir",   "type": "nicgep"},
+    # --- Central Government ---
+    {"domain": "eprocure.gov.in",      "state": "All India",         "type": "cppp"},
+    # --- Key State Portals (NICGEP framework) ---
+    {"domain": "etender.up.nic.in",    "state": "Uttar Pradesh",     "type": "nicgep"},
+    {"domain": "haryanaeprocurement.gov.in", "state": "Haryana",     "type": "nicgep"},
+    {"domain": "eproc.rajasthan.gov.in", "state": "Rajasthan",       "type": "nicgep"},
+    {"domain": "hptenders.gov.in",     "state": "Himachal Pradesh",  "type": "nicgep"},
+    {"domain": "uktenders.gov.in",     "state": "Uttarakhand",       "type": "nicgep"},
+    {"domain": "eproc.punjab.gov.in",  "state": "Punjab",            "type": "nicgep"},
+]
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# MATCHING ENGINE (not active)
+# NICGEP HTML PARSER
+# Most Indian state tender portals use the NIC GePNIC
+# framework which renders an HTML table of active tenders.
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def match_tender_to_users(tender: dict, db_session) -> list:
+def scrape_nicgep_portal(domain: str, state_label: str, max_tenders: int = 20) -> list[dict]:
     """
-    Matches a scraped tender against all user preferences.
-    
-    HOW IT WOULD WORK:
-    1. Get all users with active preferences
-    2. For each user, check:
-       → Location match (tender state in user's states_list)
-       → Work type match (tender work type in user's work_types)
-       → Value range match (tender value within min/max)
-       → Department match (tender dept in user's departments)
-    3. Return list of matching user phone numbers
-    4. Send tier-appropriate alert to each
+    Scrapes the 'Latest Active Tenders' page from any NICGEP-based portal.
+    Returns a list of tender dicts ready for DB insertion.
     """
-    # from database import SessionLocal, ContractorPreference
-    # matched_users = []
-    # prefs = db_session.query(ContractorPreference).filter(
-    #     ContractorPreference.alerts_paused == False
-    # ).all()
-    # for pref in prefs:
-    #     states = json.loads(pref.states_list)
-    #     work_types = json.loads(pref.work_types)
-    #     # Check location match
-    #     tender_location = tender.get("location", "").lower()
-    #     location_match = any(
-    #         STATES[s]["name"].lower() in tender_location for s in states
-    #     )
-    #     # Check value match
-    #     tender_value = parse_tender_value(tender.get("value", "0"))
-    #     value_match = pref.min_value <= tender_value <= pref.max_value
-    #     if location_match and value_match:
-    #         matched_users.append(pref.phone_number)
-    # return matched_users
-    pass
+    url = f"https://{domain}/nicgep/app?page=FrontEndLatestActiveTenders&service=page"
+    print(f"  → Fetching {domain} ...")
+
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        res = requests.get(url, verify=False, timeout=20, headers=headers)
+        res.raise_for_status()
+    except Exception as e:
+        print(f"  ✗ HTTP error for {domain}: {e}")
+        return []
+
+    soup = BeautifulSoup(res.text, "html.parser")
+
+    # NICGEP tables usually have id="table" or class="list_table"
+    table = soup.find("table", {"id": "table"})
+    if not table:
+        table = soup.find("table", class_="list_table")
+    if not table:
+        print(f"  ✗ No tender table found on {domain}")
+        return []
+
+    rows = table.find_all("tr")[1:max_tenders + 1]  # Skip header row
+    results = []
+
+    for row in rows:
+        cols = row.find_all("td")
+        if len(cols) < 6:
+            continue
+
+        # Standard NICGEP column layout:
+        # 0: S.No
+        # 1: e-Published Date
+        # 2: Closing Date / Bid Submission Date
+        # 3: Opening Date
+        # 4: Title / Ref No / Tender ID
+        # 5: Organisation Chain
+
+        # --- Extract Title ---
+        title_td = cols[4]
+        title_link = title_td.find("a")
+        title = title_link.text.strip() if title_link else title_td.text.strip()
+        title = title.split("[")[0].strip()  # Remove [Click to view...] suffixes
+        if not title or len(title) < 10:
+            continue
+
+        # --- Extract Tender ID ---
+        tender_id = None
+        id_match = re.search(r"Tender\s*ID\s*:\s*(\S+)", title_td.text, re.IGNORECASE)
+        if id_match:
+            tender_id = id_match.group(1).strip()
+        if not tender_id:
+            ref_match = re.search(r"Ref\.?\s*No\.?\s*:\s*(\S+)", title_td.text, re.IGNORECASE)
+            if ref_match:
+                tender_id = ref_match.group(1).strip()
+        if not tender_id:
+            tender_id = f"{domain}_{hash(title) % 100000}"
+
+        # --- Organisation Chain ---
+        org_chain = cols[5].text.strip()
+        org_chain = " | ".join([line.strip() for line in org_chain.split("\n") if line.strip()])
+
+        # --- Dates ---
+        closing_raw = cols[2].text.strip() if len(cols) > 2 else ""
+
+        # --- Build tender record ---
+        # We prefix the external_id with domain to avoid collisions across portals
+        ext_id = f"{state_label}_{tender_id}"
+
+        results.append({
+            "external_id": ext_id,
+            "title": title[:500],  # Truncate very long titles
+            "department": org_chain[:500],
+            "state": state_label,
+            "value_inr": 0,  # Value requires clicking into detail page; keyword-match instead
+            "url": f"https://{domain}/nicgep/app?page=FrontEndLatestActiveTenders&service=page",
+            "closing_date_raw": closing_raw,
+        })
+
+    print(f"  ✓ Found {len(results)} tenders from {domain}")
+    return results
 
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# SCHEDULER (not active)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def scrape_cppp_portal(max_tenders: int = 20) -> list[dict]:
+    """
+    Scrapes the Central Public Procurement Portal (CPPP / eprocure.gov.in).
+    CPPP uses a slightly different URL structure but same NICGEP engine.
+    """
+    url = "https://eprocure.gov.in/cppp/latestactivetendersnew/cpppdata"
+    print(f"  → Fetching CPPP (eprocure.gov.in) ...")
 
-def setup_scheduler():
-    """
-    Sets up APScheduler jobs for periodic scraping.
-    
-    SCHEDULE:
-    Every 6 hours (high priority):
-    → eprocure.gov.in
-    → bro.gov.in
-    → ladakhtenders.gov.in
-    → mahatenders.gov.in
-    → etender.up.nic.in
-    
-    Every 12 hours (medium priority):
-    → All other state portals
-    
-    Every 24 hours (low priority):
-    → PSU portals (NTPC, BHEL, etc.)
-    → Department-specific portals
-    
-    Daily 8 AM:
-    → Send daily digest to users with daily alert preference
-    
-    Monday 8 AM:
-    → Send weekly summary to users with weekly alert preference
-    """
-    # scheduler = AsyncIOScheduler()
-    #
-    # # High priority — every 6 hours
-    # scheduler.add_job(
-    #     scrape_eprocure,
-    #     IntervalTrigger(hours=6),
-    #     id="scrape_eprocure",
-    #     name="Scrape Central Portal"
-    # )
-    # scheduler.add_job(
-    #     scrape_bro_portal,
-    #     IntervalTrigger(hours=6),
-    #     id="scrape_bro",
-    #     name="Scrape BRO Portal"
-    # )
-    #
-    # # Daily digest — 8 AM IST
-    # scheduler.add_job(
-    #     send_daily_digest,
-    #     CronTrigger(hour=2, minute=30),  # 8 AM IST = 2:30 UTC
-    #     id="daily_digest",
-    #     name="Daily Tender Digest"
-    # )
-    #
-    # # Weekly summary — Monday 8 AM IST
-    # scheduler.add_job(
-    #     send_weekly_summary,
-    #     CronTrigger(day_of_week="mon", hour=2, minute=30),
-    #     id="weekly_summary",
-    #     name="Weekly Tender Summary"
-    # )
-    #
-    # scheduler.start()
-    pass
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        res = requests.get(url, verify=False, timeout=20, headers=headers)
+        res.raise_for_status()
+    except Exception as e:
+        print(f"  ✗ HTTP error for CPPP: {e}")
+        return []
 
+    soup = BeautifulSoup(res.text, "html.parser")
+    table = soup.find("table")
+    if not table:
+        print(f"  ✗ No tender table found on CPPP")
+        return []
 
-async def send_daily_digest():
-    """
-    Sends daily 8 AM digest to all users with daily alert preference.
-    Groups tenders by location and work type.
-    """
-    pass
+    rows = table.find_all("tr")[1:max_tenders + 1]
+    results = []
 
+    for row in rows:
+        cols = row.find_all("td")
+        if len(cols) < 5:
+            continue
 
-async def send_weekly_summary():
-    """
-    Sends Monday morning weekly summary.
-    Includes: total new tenders, top matches, upcoming deadlines.
-    """
-    pass
+        title = cols[1].text.strip() if len(cols) > 1 else ""
+        org = cols[2].text.strip() if len(cols) > 2 else ""
+        tender_id = cols[0].text.strip() if len(cols) > 0 else f"CPPP_{hash(title) % 100000}"
+
+        if not title or len(title) < 10:
+            continue
+
+        results.append({
+            "external_id": f"CPPP_{tender_id}",
+            "title": title[:500],
+            "department": org[:500],
+            "state": "All India",
+            "value_inr": 0,
+            "url": "https://eprocure.gov.in/cppp/latestactivetendersnew/cpppdata"
+        })
+
+    print(f"  ✓ Found {len(results)} tenders from CPPP")
+    return results
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# ACTIVATION INSTRUCTIONS
+# FETCH ALL PORTALS
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-"""
-TO ACTIVATE SCRAPING (Phase 2):
+def fetch_all_portals() -> list[dict]:
+    """Scrapes all registered portals and returns combined tender list."""
+    all_tenders = []
 
-1. Add to requirements.txt:
-   apscheduler==3.10.4
-   httpx==0.27.0
-   beautifulsoup4==4.12.3
-   redis==5.0.1  (optional, for job queue)
+    for portal in SCRAPE_PORTALS:
+        try:
+            if portal["type"] == "cppp":
+                tenders = scrape_cppp_portal()
+            else:
+                tenders = scrape_nicgep_portal(portal["domain"], portal["state"])
+            all_tenders.extend(tenders)
+        except Exception as e:
+            print(f"  ✗ Failed to scrape {portal['domain']}: {e}")
 
-2. Uncomment imports at top of this file
+        # Be polite — wait between portal requests to avoid rate limits
+        time.sleep(2)
 
-3. Uncomment function bodies
+    print(f"\n📊 Total tenders fetched: {len(all_tenders)}")
+    return all_tenders
 
-4. Add to main.py startup:
-   from scraper import setup_scheduler
-   @app.on_event("startup")
-   async def startup():
-       setup_scheduler()
 
-5. Add a TenderListing table to database.py:
-   class TenderListing(Base):
-       __tablename__ = "tender_listings"
-       id = Column(Integer, primary_key=True)
-       tender_id = Column(String, unique=True)
-       department = Column(String)
-       work_description = Column(Text)
-       value = Column(String)
-       deadline_date = Column(String)
-       location = Column(String)
-       source_portal = Column(String)
-       scraped_at = Column(DateTime)
-       matched = Column(Boolean, default=False)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# MATCHING ENGINE
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-6. Deploy as separate Railway worker service:
-   → Procfile: worker: python -c "from scraper import setup_scheduler; setup_scheduler()"
-   → Or use Railway's cron job feature
+def does_tender_match_pref(tender: dict, pref: ContractorPreference) -> bool:
+    """Checks if a scraped tender matches a user's saved preferences."""
 
-7. Add proxy configuration:
-   → rotating proxies for gov portals
-   → handle CAPTCHAs (some portals have them)
-   → respect rate limits
-"""
+    # 1. STATE MATCH
+    user_states = json.loads(pref.states_list) if pref.states_list else []
+    if user_states:
+        # Normalise for comparison
+        user_state_names = [s.lower().strip() for s in user_states]
+        tender_state = tender["state"].lower().strip()
+
+        # "All India" matches everything
+        if "all india" not in user_state_names and tender_state != "all india":
+            if tender_state not in user_state_names:
+                return False
+
+    # 2. VALUE MATCH (only if tender has a known value > 0)
+    if tender["value_inr"] > 0:
+        if not (pref.min_value <= tender["value_inr"] <= pref.max_value):
+            return False
+
+    # 3. WORK TYPE keyword match (fuzzy — check if any work type keyword appears in title)
+    user_work_types = json.loads(pref.work_types) if pref.work_types else []
+    if user_work_types:
+        title_lower = tender["title"].lower()
+        dept_lower = tender["department"].lower()
+        combined = title_lower + " " + dept_lower
+
+        work_keywords = {
+            "Roads & Highways": ["road", "highway", "nhai", "bro", "nhidcl", "pavement", "bituminous", "tar", "nh-", "sh-"],
+            "Building / Civil": ["building", "civil", "construction", "housing", "pwd", "cpwd", "residential", "commercial", "school", "hospital"],
+            "Electrical": ["electrical", "wiring", "transformer", "substation", "power", "electrification"],
+            "Water Supply": ["water", "pipeline", "sewage", "drainage", "jal", "plumbing", "borewell", "tank"],
+            "Bridges & Flyovers": ["bridge", "flyover", "overpass", "culvert", "rcc bridge", "steel bridge"],
+            "Solar & Renewable": ["solar", "renewable", "photovoltaic", "wind", "biomass", "seci"],
+        }
+
+        match_found = False
+        for wt in user_work_types:
+            keywords = work_keywords.get(wt, [wt.lower()])
+            if any(kw in combined for kw in keywords):
+                match_found = True
+                break
+
+        if not match_found:
+            return False
+
+    # 4. DEPARTMENT keyword match (optional — only filter if user specified departments)
+    user_depts = json.loads(pref.departments) if pref.departments else []
+    if user_depts:
+        dept_lower = tender["department"].lower()
+        dept_keywords = {
+            "All Gov": [],  # matches everything
+            "PWD / CPWD / Municipal": ["pwd", "cpwd", "municipal", "mcd", "nagar"],
+            "Highways (NHAI, BRO, NHIDCL)": ["nhai", "bro", "nhidcl", "highway", "border road"],
+            "Railways & Metro": ["railway", "metro", "ircon", "rites", "dmrc"],
+            "Jal Board / Water Depts": ["jal", "water", "phed", "sewage"],
+            "Defence / MES": ["defence", "mes", "military", "army", "navy", "air force", "gref"],
+        }
+
+        dept_match = False
+        for ud in user_depts:
+            if ud == "All Gov":
+                dept_match = True
+                break
+            keywords = dept_keywords.get(ud, [ud.lower()])
+            if any(kw in dept_lower for kw in keywords):
+                dept_match = True
+                break
+
+        if not dept_match:
+            return False
+
+    return True
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# MAIN JOB: SCRAPE → MATCH → ALERT
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def match_and_alert():
+    """
+    The core scheduled job:
+    1. Scrape all registered portals
+    2. Store new tenders in DB (skip duplicates)
+    3. Match each new tender against user preferences
+    4. Send WhatsApp alerts
+    """
+    print(f"\n{'='*60}")
+    print(f"🔄 Scraper Run @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"{'='*60}")
+
+    db: Session = SessionLocal()
+    try:
+        all_tenders = fetch_all_portals()
+        new_count = 0
+        alert_count = 0
+
+        for t in all_tenders:
+            # Skip if we already have this tender
+            existing = db.query(TenderRecord).filter(
+                TenderRecord.external_id == t["external_id"]
+            ).first()
+            if existing:
+                continue
+
+            # Save new tender
+            record = TenderRecord(
+                external_id=t["external_id"],
+                title=t["title"],
+                department=t["department"],
+                state=t["state"],
+                value_inr=t["value_inr"],
+                url=t["url"],
+            )
+            db.add(record)
+            db.commit()
+            db.refresh(record)
+            new_count += 1
+
+            # --- MATCH against all active user preferences ---
+            active_prefs = db.query(ContractorPreference).filter(
+                ContractorPreference.alerts_paused == False
+            ).all()
+
+            for pref in active_prefs:
+                if not does_tender_match_pref(t, pref):
+                    continue
+
+                # Check if we already alerted this user for this tender
+                already_alerted = db.query(TenderAlertLog).filter(
+                    TenderAlertLog.user_phone == pref.phone_number,
+                    TenderAlertLog.tender_id == t["external_id"]
+                ).first()
+                if already_alerted:
+                    continue
+
+                user = db.query(User).filter(
+                    User.phone_number == pref.phone_number
+                ).first()
+                if not user:
+                    continue
+
+                # Format value display
+                value_display = ""
+                if t["value_inr"] > 0:
+                    if t["value_inr"] >= 10000000:
+                        value_display = f"₹{t['value_inr']/10000000:.1f} Cr"
+                    elif t["value_inr"] >= 100000:
+                        value_display = f"₹{t['value_inr']/100000:.1f} Lakh"
+                    else:
+                        value_display = f"₹{t['value_inr']:,}"
+
+                value_line = f"\n💰 Est. Value: {value_display}" if value_display else ""
+
+                alert_msg = (
+                    f"🔔 *New Tender Alert!*\n\n"
+                    f"📌 {record.title}\n"
+                    f"🏢 {record.department}\n"
+                    f"📍 {record.state}{value_line}\n\n"
+                    f"🔗 {record.url}\n\n"
+                    f"Reply *'Analyze this'* to get a full AI report!"
+                )
+
+                send_whatsapp_message(user.phone_number, alert_msg)
+                alert_count += 1
+
+                # Log the alert
+                log = TenderAlertLog(
+                    user_phone=pref.phone_number,
+                    tender_id=t["external_id"],
+                    alert_type=user.alert_tier or "free",
+                )
+                db.add(log)
+                db.commit()
+
+        print(f"\n✅ Run complete: {new_count} new tenders, {alert_count} alerts sent.")
+
+    except Exception as e:
+        print(f"❌ Scraper error: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        db.close()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# SCHEDULER
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def run_scraper_schedule():
+    print("━" * 60)
+    print("🤖 TenderBot Scraper Worker Started")
+    print(f"   Portals: {len(SCRAPE_PORTALS)}")
+    print(f"   Schedule: Every 6 hours")
+    print("━" * 60)
+
+    # Run once immediately on boot
+    match_and_alert()
+
+    # Then every 6 hours
+    schedule.every(6).hours.do(match_and_alert)
+
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
+
+
+if __name__ == "__main__":
+    run_scraper_schedule()

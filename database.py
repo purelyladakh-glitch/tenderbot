@@ -86,6 +86,21 @@ class TenderAlertLog(Base):
     followed_up = Column(Boolean, default=False)
 
 
+class TenderRecord(Base):
+    __tablename__ = "tender_records"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    external_id = Column(String, unique=True, index=True) # e.g., eprocure ID
+    title = Column(String)
+    department = Column(String)
+    state = Column(String)
+    value_inr = Column(Integer, default=0)
+    published_date = Column(DateTime)
+    closing_date = Column(DateTime)
+    url = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 def get_db():
     db = SessionLocal()
     try:
