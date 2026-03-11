@@ -8,13 +8,29 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./tenderbot.db")
 
-engine = create_engine(
-    DATABASE_URL, connect_args={"check_same_thread": False}
-)
+# Fix for Heroku/Railway PostgreSQL URLs which starts with 'postgres://' 
+# but SQLAlchemy requires 'postgresql://'
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+# SQLite needs check_same_thread=False, PostgreSQL does not.
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+
+engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
+# --- TABLES ---
+
+class WebhookLog(Base):
+    """Logs all incoming webhooks from Twilio and Razorpay for reliability."""
+    __tablename__ = "webhook_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    source = Column(String)  # 'twilio' or 'razorpay'
+    payload = Column(String) # JSON string
+    processed = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 class User(Base):
     __tablename__ = "users"
 

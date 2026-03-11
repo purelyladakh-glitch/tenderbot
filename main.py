@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 
-from database import engine, get_db, Base, Payment, User
+from database import engine, get_db, Base, Payment, User, WebhookLog
 from bot import handle_incoming_message, send_whatsapp_message, handle_payment_success
 from payments import verify_webhook_signature
 from utils import PLANS
@@ -33,11 +33,19 @@ async def twilio_webhook(request: Request, background_tasks: BackgroundTasks, db
     """Receives incoming messages/media from Twilio"""
     form_data = await request.form()
     
+    # Log the webhook for reliability
+    log = WebhookLog(source="twilio", payload=json.dumps(dict(form_data)))
+    db.add(log)
+    db.commit()
+    
     phone_number = form_data.get("From", "")
     text = form_data.get("Body", "").strip()
     media_url = form_data.get("MediaUrl0")  # Exists if PDF sent
     
     handle_incoming_message(phone_number, text, media_url, db, background_tasks)
+    
+    log.processed = True
+    db.commit()
     
     return PlainTextResponse(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>",
@@ -52,6 +60,11 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
     
     if not verify_webhook_signature(payload_body, signature):
         return JSONResponse({"status": "error", "message": "Invalid signature"}, status_code=400)
+    
+    # Log the webhook for reliability
+    log = WebhookLog(source="razorpay", payload=payload_body.decode('utf-8'))
+    db.add(log)
+    db.commit()
     
     try:
         data = json.loads(payload_body)
@@ -100,6 +113,10 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
                             plan_type = p_key
                             break
                     handle_payment_success(user, int(amount_paid), plan_type, db)
+        
+        # Mark as processed
+        log.processed = True
+        db.commit()
         
         return JSONResponse({"status": "ok"})
     except Exception as e:
