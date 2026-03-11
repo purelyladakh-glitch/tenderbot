@@ -1,107 +1,291 @@
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# MULTI-LANGUAGE STRINGS
+# MULTI-LANGUAGE STRINGS — COMPLETE
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# Supported Languages: "en" (English), "hi" (Hindi script), "hinglish" (Hindi in English script), "mr" (Marathi)
+# Hinglish is the default fallback for any missing key in other languages.
+
+_HINGLISH = {
+    # Onboarding
+    "welcome_new": "👋 Welcome to *TenderBot*!\n\nMain kisi bhi Government Tender PDF ko 3 minute mein padh kar bata sakta hoon:\n✅ Kya aap qualify karte ho?\n✅ Hidden Risks & problems\n✅ BOQ Rates aur Profit estimate\n\nShuru karne ke liye, apni bhasha chunein (Sirf Number reply karo):",
+    "lang_menu": "🌐 *Bhasha Chunein / Select Language:*\n\n1️⃣ English\n2️⃣ Hindi (हिंदी)\n3️⃣ Hinglish (Default)\n4️⃣ Marathi (मराठी)\n\n👉 *Sirf 1, 2, 3, ya 4 type karo!*",
+    "lang_set_success": "✅ Language *Hinglish* set ho gayi hai.\n\nAb, mujhe koi bhi Tender ka *PDF file* ya link bhejo, aur main turant analyze kar dunga! 📄",
+    "welcome_message": "👋 TenderBot mein wapas swagat hai!\n\n📄 Tender PDF bhejo — 3 min mein full report.\n⚙️ \"Alert chahiye\" type karo preferences set karne ke liye.\n💰 \"Plan\" type karo plans dekhne ke liye.\n🌐 \"Language\" type karo bhasha badalne ke liye.",
+
+    # Analysis Menu
+    "menu_title": "📊 *Tender Analysis Menu*",
+    "menu_opt_1": "1️⃣ Eligibility Check (Qualify karte ho?)",
+    "menu_opt_2": "2️⃣ Hidden Risks & Problems",
+    "menu_opt_3": "3️⃣ BOQ Rates & Bid Amount",
+    "menu_opt_4": "4️⃣ Required Documents",
+    "menu_opt_5": "5️⃣ Cash Flow Required (Kitna paisa chahiye)",
+    "menu_opt_6": "6️⃣ View Profit & Cost Estimate",
+    "menu_opt_7": "7️⃣ Full Report (Sab ek saath)",
+    "menu_opt_8": "8️⃣ Download PDF ⬇️",
+    "menu_opt_9": "9️⃣ Share & Earn (Free credits) 🎁",
+    "menu_footer": "👉 *Sirf 1, 2, 3... type karke bhej do!*",
+
+    # Status Messages
+    "analyzing_wait": "⏳ Aapka tender abhi analyze ho raha hai... thoda wait karo (2-3 min).",
+    "still_analyzing": "Still analyzing... almost done ⏳",
+    "error_generic": "❌ Sorry, kuch error aa gaya. Thodi der baad try karo.",
+    "unrecognized": "❓ Samjha nahi. PDF bhejo ya menu mein se number choose karo.",
+    "send_pdf_first": "📄 Pehle ek Tender PDF bhejo — main 3 minute mein poora analysis de dunga!",
+
+    # PDF Handling
+    "pdf_received_analyzing": "📄 Tender mil gaya!\n⏳ Poora analyze kar raha hoon — 3 minute mein complete report bhejta hoon.",
+    "pdf_too_large": "⚠️ PDF bahut bada hai (>50MB).\nCompress karke bhejo ya portal ka link do.",
+    "documents_checklist_prompt": "Jab tak main analyze karta hoon —\nyeh documents ready hain aapke paas?\n\n□ ITR last 3 years\n□ CA certified balance sheet\n□ Registration certificate\n□ GST certificate\n□ Completion certificates of past work\n□ Solvency certificate\n\nJo ready nahi hai batao — main deadline check karke batata hoon.",
+
+    # Preference Setup
+    "pref_location_prompt": "📍 *Aap kahan kaam karte ho?*\n(Sirf *Number* reply karo. Multiple ke liye comma lagao, jaise: 2, 4):\n\n1️⃣ All India 🇮🇳\n2️⃣ Maharashtra 🏙️\n3️⃣ Delhi NCR 🏛️\n4️⃣ Punjab & Haryana 🌾\n5️⃣ J&K & Ladakh ⛰️\n6️⃣ Uttar Pradesh 🕌\n7️⃣ Karnataka 🏢\n8️⃣ Gujarat 🏭\n\n👉 *Ya apna State/City type karo!*",
+    "pref_location_error": "❓ Samjha nahi. Sirf Option Number bhi bhej sakte ho (1 se 8 tak).",
+    "pref_location_noted": "✅ Location noted: {names}{ladakh_note}",
+    "pref_ladakh_note": "\n\n⛰️ Ladakh selected — BRO, NHIDCL, MES, LAHDC tenders bhi tracked honge!",
+    "pref_work_type_prompt": "🔨 *Kaunsa kaam karte ho?*\n(Sirf *Number* reply karo. Multiple = 1, 3):\n\n1️⃣ Roads & Highways 🛣️\n2️⃣ Building / Civil Works 🏗️\n3️⃣ Electrical Works ⚡\n4️⃣ Water Supply / Plumbing 💧\n5️⃣ Bridges & Flyovers 🌉\n6️⃣ Solar & Renewable ☀️\n\n👉 *Ya apna work type likh do!*",
+    "pref_work_type_noted": "✅ Work types noted: {work_types}",
+    "pref_value_range_prompt": "💰 *Kitni value ke tenders chahiye?*\n(Sirf *Number* reply karo):\n\n1️⃣ Upto 50 Lakh\n2️⃣ 50 Lakh - 5 Crore\n3️⃣ 5 Crore - 20 Crore\n4️⃣ 20 Crore - 100 Crore\n5️⃣ All Amounts (Sabhi)\n\n👉 *Ya apni range likho (Jaise: \"2 Cr se 5 Cr\")*",
+    "pref_value_range_noted": "✅ Value range: {min_disp} to {max_disp}",
+    "pref_departments_prompt": "🏢 *Kaunse depts ke tenders chahiye?*\n(Sirf *Number* reply karo. Jaise: 1, 2):\n\n1️⃣ Sabhi Sarkari (All Gov) 🏛️\n2️⃣ PWD / CPWD / Municipal 🏢\n3️⃣ Highways (NHAI, BRO, NHIDCL) 🛣️\n4️⃣ Railways & Metro 🚂\n5️⃣ Jal Board / Water Depts 💧\n6️⃣ Defence / MES 🛡️\n\n👉 *Ya apna dept likh do!*",
+    "pref_departments_noted": "✅ Departments: {departments}",
+    "pref_alert_freq_prompt": "⏰ *Kitni baar alert chahiye?*\n(Sirf *Number* reply karo):\n\n1️⃣ Instant 🚀 (Naya aate hi turant alert)\n2️⃣ Daily Morning ☀️ (Subah 8 baje digest)\n3️⃣ Weekly 📅 (Monday summary)",
+    "pref_summary": "✅ Preferences save ho gayi!\n\n📍 LOCATIONS: {state_names}\n🔨 WORK TYPES: {work_types}\n💰 VALUE: {min_value} — {max_value}\n🏢 DEPARTMENTS: {departments}\n⏰ ALERTS: {alerts}\n📡 {num_portals} portals tracked\n\nMatching tenders milenge!\n\nChange karna ho kabhi bhi:\nType karo \"preference update\"\n\nAb tender PDF bhejo ya wait karo alerts ke liye! 📄",
+    "freq_instant": "Turant — real time 🚀",
+    "freq_daily": "Daily 8 AM digest ☀️",
+    "freq_weekly": "Weekly Monday summary 📅",
+
+    # Plans & Payment
+    "plan_options": "⭐ *TenderBot Plans:*\n\n1️⃣ *Buy 1 Report (₹99)*\nBest for occasional use. Valid 48 hrs.\n\n2️⃣ *Starter Pack - 5 Reports (₹399) 🔥 Best Value*\nLive searches, full analysis reports. Valid 60 days.\n\n3️⃣ *Unlimited Pro + Alerts (₹799/month)*\n30 reports + Unlimited AI alert analysis. Bot hunts tenders for you!\n\n👉 *Kaunsa plan chahiye? Sirf Number reply karo!*",
+    "single_plan_msg": "📄 *₹99 — Single Analysis*\n1 complete tender report. Valid 48 hours.",
+    "pack_plan_msg": "⭐ *₹399 — 5 Analysis Pack*\n5 full tender reports. Valid 60 days. Best value!",
+    "monthly_plan_msg": "🚀 *₹799 — Monthly Pro*\n30 reports + Unlimited AI tender alerts. Bot hunts for you!",
+    "payment_link_message": "💳 UPI Payment Link:\n{link}\n\nPayment hote hi turant unlock ho jayega. 🔓",
+    "free_analysis_used": "✅ Aapka free analysis use ho gaya.",
+    "payment_options_prompt": "Agle tender ke liye:\n\n1️⃣ ₹99  — 1 Analysis 📄\n2️⃣ ₹399 — 5 Analyses Pack ⭐ (Best Value)\n3️⃣ ₹799 — Monthly Pro + Alerts 🚀\n\n👉 *Abhi ₹99 se shuru karne ke liye link pe click karein:*\n{link_99}\n\n👉 *Bade plan (2 ya 3) ke liye sirf Number reply karo!*",
+
+    # Balance
+    "plan_free": "Free",
+    "plan_single": "₹99 Single",
+    "plan_pack": "₹399 Pack",
+    "plan_monthly": "₹799 Monthly",
+    "balance_expiry": "\n📅 Expiry: {expiry_date} ({days_left} din baaki)",
+    "balance_details": "📊 Aapka Account:\n\nPlan: {plan_name}\nCredits: {credits}\nFree analysis: {free_analysis_status}\nTotal analyses done: {total_analyses}{expiry_info}\n\nUpgrade ya renew karna hai?\nType karo \"plan\" ya \"799 wala\"",
+    "used": "Used ✓",
+    "available": "Available ✅",
+
+    # Alerts
+    "alerts_paused": "✅ Alerts 7 din ke liye pause ho gaye.\nResume karne ke liye type karo: \"alerts shuru karo\"",
+    "alerts_resumed": "✅ Alerts fir shuru ho gaye!\nMatching tenders milte rahenge. 🔔",
+
+    # History
+    "no_past_analysis": "📋 Koi past analysis nahi mila. Tender PDF bhejo!",
+    "recent_analyses_header": "📋 Aapke recent analyses:",
+    "total_analyses_done": "\nTotal: {total} analyses kiye hain.",
+}
+
+_ENGLISH = {
+    "welcome_new": "👋 Welcome to *TenderBot*!\n\nI can analyze any Government Tender PDF in 3 minutes:\n✅ Eligibility Check\n✅ Hidden Risks\n✅ BOQ Rates & Profit Estimate\n\nTo begin, please select your preferred language:",
+    "lang_menu": "🌐 *Select Language:*\n\n1️⃣ English\n2️⃣ Hindi (हिंदी)\n3️⃣ Hinglish (Default)\n4️⃣ Marathi (मराठी)\n\n👉 *Reply with 1, 2, 3, or 4!*",
+    "lang_set_success": "✅ Language set to *English*.\n\nPlease send me a Tender *PDF file* and I will analyze it instantly! 📄",
+    "welcome_message": "👋 Welcome back to TenderBot!\n\n📄 Send a Tender PDF — full report in 3 minutes.\n⚙️ Type \"alerts\" to set preferences.\n💰 Type \"plan\" to view plans.\n🌐 Type \"language\" to change language.",
+    "menu_title": "📊 *Tender Analysis Menu*",
+    "menu_opt_1": "1️⃣ Eligibility Check",
+    "menu_opt_2": "2️⃣ Hidden Risks & Issues",
+    "menu_opt_3": "3️⃣ BOQ Rates & Bid Amount",
+    "menu_opt_4": "4️⃣ Required Documents",
+    "menu_opt_5": "5️⃣ Cash Flow Required",
+    "menu_opt_6": "6️⃣ Profit & Cost Estimate",
+    "menu_opt_7": "7️⃣ Full Report",
+    "menu_opt_8": "8️⃣ Download PDF ⬇️",
+    "menu_opt_9": "9️⃣ Share & Earn Credits 🎁",
+    "menu_footer": "👉 *Reply with 1, 2, 3...*",
+    "analyzing_wait": "⏳ Analyzing your tender... please wait 2-3 minutes.",
+    "still_analyzing": "Still analyzing... almost done ⏳",
+    "error_generic": "❌ Sorry, an error occurred. Please try again later.",
+    "unrecognized": "❓ I didn't understand. Please send a PDF or pick a menu option.",
+    "send_pdf_first": "📄 Please send a Tender PDF first — I'll deliver a full report in 3 minutes!",
+    "pdf_received_analyzing": "📄 Tender received!\n⏳ Running full AI analysis — report ready in 3 minutes.",
+    "pdf_too_large": "⚠️ PDF is too large (>50MB).\nPlease compress and resend.",
+    "documents_checklist_prompt": "While I analyze, do you have these documents ready?\n\n□ ITR (last 3 years)\n□ CA certified balance sheet\n□ Registration certificate\n□ GST certificate\n□ Past work completion certificates\n□ Solvency certificate\n\nLet me know what you're missing.",
+    "pref_location_prompt": "📍 *Where do you work?*\n(Reply with numbers, e.g.: 2, 4):\n\n1️⃣ All India 🇮🇳\n2️⃣ Maharashtra 🏙️\n3️⃣ Delhi NCR 🏛️\n4️⃣ Punjab & Haryana 🌾\n5️⃣ J&K & Ladakh ⛰️\n6️⃣ Uttar Pradesh 🕌\n7️⃣ Karnataka 🏢\n8️⃣ Gujarat 🏭\n\n👉 *Or type your State/City!*",
+    "pref_location_error": "❓ Didn't understand. Please reply with option numbers (1 to 8).",
+    "pref_location_noted": "✅ Location noted: {names}{ladakh_note}",
+    "pref_ladakh_note": "\n\n⛰️ Ladakh selected — BRO, NHIDCL, MES, LAHDC tenders will also be tracked!",
+    "pref_work_type_prompt": "🔨 *What type of work do you do?*\n(Reply with numbers, e.g.: 1, 3):\n\n1️⃣ Roads & Highways 🛣️\n2️⃣ Building / Civil 🏗️\n3️⃣ Electrical ⚡\n4️⃣ Water Supply 💧\n5️⃣ Bridges & Flyovers 🌉\n6️⃣ Solar & Renewable ☀️\n\n👉 *Or type your work type!*",
+    "pref_work_type_noted": "✅ Work types noted: {work_types}",
+    "pref_value_range_prompt": "💰 *What tender value range?*\n\n1️⃣ Up to 50 Lakh\n2️⃣ 50 Lakh - 5 Crore\n3️⃣ 5 Crore - 20 Crore\n4️⃣ 20 Crore - 100 Crore\n5️⃣ All Amounts\n\n👉 *Or type your range (e.g.: \"2 Cr to 5 Cr\")*",
+    "pref_value_range_noted": "✅ Value range: {min_disp} to {max_disp}",
+    "pref_departments_prompt": "🏢 *Which departments?*\n\n1️⃣ All Government 🏛️\n2️⃣ PWD / CPWD / Municipal 🏢\n3️⃣ Highways (NHAI, BRO, NHIDCL) 🛣️\n4️⃣ Railways & Metro 🚂\n5️⃣ Water Board 💧\n6️⃣ Defence / MES 🛡️\n\n👉 *Or type your department!*",
+    "pref_departments_noted": "✅ Departments: {departments}",
+    "pref_alert_freq_prompt": "⏰ *How often should we alert you?*\n\n1️⃣ Instant 🚀\n2️⃣ Daily Morning ☀️\n3️⃣ Weekly (Monday) 📅",
+    "pref_summary": "✅ Preferences saved!\n\n📍 LOCATIONS: {state_names}\n🔨 WORK TYPES: {work_types}\n💰 VALUE: {min_value} — {max_value}\n🏢 DEPARTMENTS: {departments}\n⏰ ALERTS: {alerts}\n📡 {num_portals} portals tracked\n\nYou will receive matching tender alerts!\n\nTo change anytime, type \"update preferences\"\n\nSend a tender PDF now or wait for alerts! 📄",
+    "freq_instant": "Instant — real time 🚀",
+    "freq_daily": "Daily 8 AM digest ☀️",
+    "freq_weekly": "Weekly Monday summary 📅",
+    "plan_options": "⭐ *TenderBot Plans:*\n\n1️⃣ *1 Report (₹99)* — Valid 48 hrs\n2️⃣ *5 Reports (₹399)* 🔥 Best Value — Valid 60 days\n3️⃣ *Unlimited Pro (₹799/mo)* 🚀 — 30 reports + alerts\n\n👉 *Reply with 1, 2, or 3!*",
+    "single_plan_msg": "📄 *₹99 — Single Analysis*\n1 complete tender report. Valid 48 hours.",
+    "pack_plan_msg": "⭐ *₹399 — 5 Analysis Pack*\n5 reports. Valid 60 days. Best value!",
+    "monthly_plan_msg": "🚀 *₹799 — Monthly Pro*\n30 reports + AI tender alerts.",
+    "payment_link_message": "💳 Payment Link:\n{link}\n\nCredits unlock instantly after payment. 🔓",
+    "free_analysis_used": "✅ Your free analysis has been used.",
+    "payment_options_prompt": "For your next tender:\n\n1️⃣ ₹99  — 1 Analysis 📄\n2️⃣ ₹399 — 5 Pack ⭐\n3️⃣ ₹799 — Monthly Pro 🚀\n\n👉 *Quick pay ₹99:*\n{link_99}\n\n👉 *For plan 2 or 3, reply with the number!*",
+    "plan_free": "Free",
+    "plan_single": "₹99 Single",
+    "plan_pack": "₹399 Pack",
+    "plan_monthly": "₹799 Monthly",
+    "balance_expiry": "\n📅 Expiry: {expiry_date} ({days_left} days left)",
+    "balance_details": "📊 Your Account:\n\nPlan: {plan_name}\nCredits: {credits}\nFree analysis: {free_analysis_status}\nTotal analyses: {total_analyses}{expiry_info}\n\nTo upgrade, type \"plan\"",
+    "used": "Used ✓",
+    "available": "Available ✅",
+    "alerts_paused": "✅ Alerts paused for 7 days.\nTo resume, type \"resume alerts\"",
+    "alerts_resumed": "✅ Alerts resumed!\nYou will receive matching tenders. 🔔",
+    "no_past_analysis": "📋 No past analyses found. Send a Tender PDF!",
+    "recent_analyses_header": "📋 Your recent analyses:",
+    "total_analyses_done": "\nTotal: {total} analyses done.",
+}
+
+_HINDI = {
+    "welcome_new": "👋 *TenderBot* में आपका स्वागत है!\n\nमैं किसी भी सरकारी टेंडर PDF को 3 मिनट में एनालाइज़ कर सकता हूँ:\n✅ क्या आप योग्य हैं?\n✅ छुपे खतरे\n✅ BOQ रेट्स और प्रॉफिट अनुमान\n\nकृपया अपनी भाषा चुनें:",
+    "lang_menu": "🌐 *भाषा चुनें:*\n\n1️⃣ English\n2️⃣ Hindi (हिंदी)\n3️⃣ Hinglish (डिफ़ॉल्ट)\n4️⃣ Marathi (मराठी)\n\n👉 *1, 2, 3, या 4 टाइप करें!*",
+    "lang_set_success": "✅ भाषा *हिंदी* सेट हो गई है।\n\nअब, मुझे टेंडर *PDF फ़ाइल* भेजें! 📄",
+    "welcome_message": "👋 TenderBot में वापसी!\n\n📄 टेंडर PDF भेजें — 3 मिनट में रिपोर्ट।\n⚙️ \"अलर्ट चाहिए\" लिखें।\n💰 \"प्लान\" लिखें।\n🌐 \"भाषा\" लिखें भाषा बदलने के लिए।",
+    "menu_title": "📊 *टेंडर एनालिसिस मेनू*",
+    "menu_opt_1": "1️⃣ योग्यता चेक",
+    "menu_opt_2": "2️⃣ छुपे खतरे और दिक्कतें",
+    "menu_opt_3": "3️⃣ BOQ रेट्स और बिड अमाउंट",
+    "menu_opt_4": "4️⃣ ज़रूरी कागज़ात",
+    "menu_opt_5": "5️⃣ कितना पैसा चाहिए?",
+    "menu_opt_6": "6️⃣ प्रॉफिट और लागत अनुमान",
+    "menu_opt_7": "7️⃣ पूरी रिपोर्ट",
+    "menu_opt_8": "8️⃣ PDF डाउनलोड ⬇️",
+    "menu_opt_9": "9️⃣ शेयर करें, फ्री क्रेडिट पाएं 🎁",
+    "menu_footer": "👉 *सिर्फ 1, 2, 3... टाइप करें!*",
+    "analyzing_wait": "⏳ टेंडर एनालाइज़ हो रहा है... 2-3 मिनट रुकें।",
+    "still_analyzing": "अभी भी एनालाइज़ हो रहा है... लगभग हो गया ⏳",
+    "error_generic": "❌ माफ़ करना, कुछ गड़बड़ हो गई। बाद में कोशिश करें।",
+    "unrecognized": "❓ समझा नहीं। PDF भेजें या मेनू से नंबर चुनें।",
+    "send_pdf_first": "📄 पहले टेंडर PDF भेजें — 3 मिनट में पूरी रिपोर्ट दूँगा!",
+    "pdf_received_analyzing": "📄 टेंडर मिल गया!\n⏳ एनालाइज़ कर रहा हूँ — 3 मिनट में रिपोर्ट भेजूँगा।",
+    "pdf_too_large": "⚠️ PDF बहुत बड़ा है (>50MB).\nकम्प्रेस करके भेजें।",
+    "documents_checklist_prompt": "जब तक मैं एनालाइज़ करता हूँ —\nये कागज़ात तैयार हैं?\n\n□ ITR (3 साल)\n□ CA बैलेंस शीट\n□ रजिस्ट्रेशन सर्टिफिकेट\n□ GST सर्टिफिकेट\n□ पिछले काम के कम्प्लीशन सर्टिफिकेट\n□ सॉल्वेंसी सर्टिफिकेट",
+    "pref_location_prompt": "📍 *आप कहाँ काम करते हैं?*\n(नंबर लिखें, जैसे: 2, 4):\n\n1️⃣ पूरा भारत 🇮🇳\n2️⃣ महाराष्ट्र 🏙️\n3️⃣ दिल्ली NCR 🏛️\n4️⃣ पंजाब और हरियाणा 🌾\n5️⃣ J&K और लद्दाख ⛰️\n6️⃣ उत्तर प्रदेश 🕌\n7️⃣ कर्नाटक 🏢\n8️⃣ गुजरात 🏭",
+    "pref_location_error": "❓ समझा नहीं। 1 से 8 तक कोई नंबर भेजें।",
+    "pref_location_noted": "✅ लोकेशन नोट: {names}{ladakh_note}",
+    "pref_ladakh_note": "\n\n⛰️ लद्दाख — BRO, NHIDCL, MES, LAHDC टेंडर भी ट्रैक होंगे!",
+    "pref_work_type_prompt": "🔨 *कौनसा काम करते हैं?*\n\n1️⃣ सड़क / हाईवे 🛣️\n2️⃣ बिल्डिंग / सिविल 🏗️\n3️⃣ इलेक्ट्रिकल ⚡\n4️⃣ पानी सप्लाई 💧\n5️⃣ पुल / फ्लाईओवर 🌉\n6️⃣ सोलर ☀️",
+    "pref_work_type_noted": "✅ वर्क टाइप: {work_types}",
+    "pref_value_range_prompt": "💰 *कितनी वैल्यू के टेंडर?*\n\n1️⃣ 50 लाख तक\n2️⃣ 50 लाख - 5 करोड़\n3️⃣ 5 करोड़ - 20 करोड़\n4️⃣ 20 करोड़ - 100 करोड़\n5️⃣ सभी",
+    "pref_value_range_noted": "✅ वैल्यू रेंज: {min_disp} से {max_disp}",
+    "pref_departments_prompt": "🏢 *कौनसे विभाग?*\n\n1️⃣ सभी सरकारी 🏛️\n2️⃣ PWD / CPWD / नगर निगम 🏢\n3️⃣ हाईवे (NHAI, BRO) 🛣️\n4️⃣ रेलवे / मेट्रो 🚂\n5️⃣ जल बोर्ड 💧\n6️⃣ रक्षा / MES 🛡️",
+    "pref_departments_noted": "✅ विभाग: {departments}",
+    "pref_alert_freq_prompt": "⏰ *कितनी बार अलर्ट?*\n\n1️⃣ तुरंत 🚀\n2️⃣ रोज़ सुबह ☀️\n3️⃣ हफ्ते में एक बार 📅",
+    "pref_summary": "✅ प्राथमिकताएं सेव!\n\n📍 लोकेशन: {state_names}\n🔨 काम: {work_types}\n💰 वैल्यू: {min_value} — {max_value}\n🏢 विभाग: {departments}\n⏰ अलर्ट: {alerts}\n📡 {num_portals} पोर्टल ट्रैक\n\nमैचिंग टेंडर मिलेंगे!\nबदलने के लिए \"preference update\" लिखें।",
+    "freq_instant": "तुरंत 🚀",
+    "freq_daily": "रोज़ सुबह 8 बजे ☀️",
+    "freq_weekly": "हर सोमवार 📅",
+    "plan_options": "⭐ *TenderBot प्लान:*\n\n1️⃣ *1 रिपोर्ट (₹99)* — 48 घंटे\n2️⃣ *5 रिपोर्ट (₹399)* 🔥 — 60 दिन\n3️⃣ *अनलिमिटेड (₹799/महीना)* 🚀 — 30 रिपोर्ट + अलर्ट\n\n👉 *नंबर रिप्लाई करें!*",
+    "single_plan_msg": "📄 *₹99 — एक एनालिसिस*\n1 पूरी रिपोर्ट। 48 घंटे।",
+    "pack_plan_msg": "⭐ *₹399 — 5 एनालिसिस पैक*\n5 रिपोर्ट। 60 दिन।",
+    "monthly_plan_msg": "🚀 *₹799 — मंथली प्रो*\n30 रिपोर्ट + AI अलर्ट।",
+    "payment_link_message": "💳 पेमेंट लिंक:\n{link}\n\nभुगतान होते ही अनलॉक। 🔓",
+    "free_analysis_used": "✅ फ्री एनालिसिस इस्तेमाल हो गया।",
+    "payment_options_prompt": "अगले टेंडर के लिए:\n\n1️⃣ ₹99 — 1 📄\n2️⃣ ₹399 — 5 पैक ⭐\n3️⃣ ₹799 — मंथली 🚀\n\n👉 *₹99 का लिंक:*\n{link_99}\n\n👉 *2 या 3 का नंबर रिप्लाई करें!*",
+    "plan_free": "फ्री",
+    "plan_single": "₹99 सिंगल",
+    "plan_pack": "₹399 पैक",
+    "plan_monthly": "₹799 मंथली",
+    "balance_expiry": "\n📅 एक्सपायरी: {expiry_date} ({days_left} दिन बाकी)",
+    "balance_details": "📊 आपका अकाउंट:\n\nप्लान: {plan_name}\nक्रेडिट: {credits}\nफ्री एनालिसिस: {free_analysis_status}\nकुल एनालिसिस: {total_analyses}{expiry_info}\n\nअपग्रेड के लिए \"प्लान\" लिखें",
+    "used": "इस्तेमाल हो गया ✓",
+    "available": "उपलब्ध ✅",
+    "alerts_paused": "✅ अलर्ट 7 दिन के लिए बंद।\nशुरू करने के लिए \"अलर्ट शुरू\" लिखें।",
+    "alerts_resumed": "✅ अलर्ट फिर शुरू! 🔔",
+    "no_past_analysis": "📋 कोई पिछला एनालिसिस नहीं। PDF भेजें!",
+    "recent_analyses_header": "📋 आपके हाल के एनालिसिस:",
+    "total_analyses_done": "\nकुल: {total} एनालिसिस किए।",
+}
+
+_MARATHI = {
+    "welcome_new": "👋 *TenderBot* मध्ये स्वागत!\n\nमी कोणतीही सरकारी टेंडर PDF ३ मिनिटांत एनालाइज़ करतो:\n✅ पात्रता तपासणी\n✅ छुपे धोके\n✅ BOQ रेट्स आणि नफा अंदाज\n\nकृपया भाषा निवडा:",
+    "lang_menu": "🌐 *भाषा निवडा:*\n\n1️⃣ English\n2️⃣ Hindi (हिंदी)\n3️⃣ Hinglish (डिफॉल्ट)\n4️⃣ Marathi (मराठी)\n\n👉 *१, २, ३, किंवा ४ टाईप करा!*",
+    "lang_set_success": "✅ भाषा *मराठी* सेट झाली.\n\nआता टेंडर *PDF फाईल* पाठवा! 📄",
+    "welcome_message": "👋 TenderBot मध्ये परत स्वागत!\n\n📄 टेंडर PDF पाठवा.\n⚙️ \"अलर्ट\" टाईप करा.\n💰 \"प्लान\" टाईप करा.\n🌐 \"भाषा\" टाईप करा.",
+    "menu_title": "📊 *टेंडर ऍनालिसिस मेनू*",
+    "menu_opt_1": "1️⃣ पात्रता तपासा",
+    "menu_opt_2": "2️⃣ छुपे धोके",
+    "menu_opt_3": "3️⃣ BOQ रेट्स आणि बिड",
+    "menu_opt_4": "4️⃣ आवश्यक कागदपत्रे",
+    "menu_opt_5": "5️⃣ किती पैसे लागतील?",
+    "menu_opt_6": "6️⃣ नफा आणि खर्च",
+    "menu_opt_7": "7️⃣ संपूर्ण अहवाल",
+    "menu_opt_8": "8️⃣ PDF डाउनलोड ⬇️",
+    "menu_opt_9": "9️⃣ शेअर करा, फ्री क्रेडिट मिळवा 🎁",
+    "menu_footer": "👉 *फक्त 1, 2, 3... टाईप करा!*",
+    "analyzing_wait": "⏳ टेंडर तपासले जात आहे... २-३ मिनिटे थांबा.",
+    "still_analyzing": "अजून तपासत आहे... जवळजवळ झाले ⏳",
+    "error_generic": "❌ क्षमस्व, चूक झाली. नंतर प्रयत्न करा.",
+    "unrecognized": "❓ समजले नाही. PDF पाठवा किंवा मेनूमधून निवडा.",
+    "send_pdf_first": "📄 आधी टेंडर PDF पाठवा — ३ मिनिटांत रिपोर्ट!",
+    "pdf_received_analyzing": "📄 टेंडर मिळाले!\n⏳ एनालाइज़ करत आहे — ३ मिनिटांत रिपोर्ट.",
+    "pdf_too_large": "⚠️ PDF खूप मोठी आहे (>50MB).\nकम्प्रेस करून पाठवा.",
+    "documents_checklist_prompt": "मी एनालाइज़ करतो तोपर्यंत —\nहे कागदपत्रे तयार आहेत का?\n\n□ ITR (३ वर्षे)\n□ CA बॅलन्स शीट\n□ रजिस्ट्रेशन\n□ GST\n□ कामाचे प्रमाणपत्र\n□ सॉल्व्हन्सी",
+    "pref_location_prompt": "📍 *तुम्ही कुठे काम करता?*\n\n1️⃣ संपूर्ण भारत 🇮🇳\n2️⃣ महाराष्ट्र 🏙️\n3️⃣ दिल्ली 🏛️\n4️⃣ पंजाब/हरियाणा 🌾\n5️⃣ J&K/लडाख ⛰️\n6️⃣ उत्तर प्रदेश 🕌\n7️⃣ कर्नाटक 🏢\n8️⃣ गुजरात 🏭",
+    "pref_location_error": "❓ समजले नाही. १ ते ८ नंबर पाठवा.",
+    "pref_location_noted": "✅ लोकेशन: {names}{ladakh_note}",
+    "pref_ladakh_note": "\n\n⛰️ लडाख — BRO, NHIDCL, MES ट्रॅक होतील!",
+    "pref_work_type_prompt": "🔨 *कोणते काम करता?*\n\n1️⃣ रस्ते 🛣️\n2️⃣ बांधकाम 🏗️\n3️⃣ इलेक्ट्रिकल ⚡\n4️⃣ पाणी पुरवठा 💧\n5️⃣ पूल 🌉\n6️⃣ सोलर ☀️",
+    "pref_work_type_noted": "✅ वर्क टाइप: {work_types}",
+    "pref_value_range_prompt": "💰 *किती किमतीचे टेंडर?*\n\n1️⃣ ५० लाखांपर्यंत\n2️⃣ ५० लाख - ५ कोटी\n3️⃣ ५ - २० कोटी\n4️⃣ २० - १०० कोटी\n5️⃣ सर्व",
+    "pref_value_range_noted": "✅ व्हॅल्यू रेंज: {min_disp} ते {max_disp}",
+    "pref_departments_prompt": "🏢 *कोणते विभाग?*\n\n1️⃣ सर्व सरकारी 🏛️\n2️⃣ PWD / नगरपालिका 🏢\n3️⃣ हायवे 🛣️\n4️⃣ रेल्वे / मेट्रो 🚂\n5️⃣ जल बोर्ड 💧\n6️⃣ संरक्षण / MES 🛡️",
+    "pref_departments_noted": "✅ विभाग: {departments}",
+    "pref_alert_freq_prompt": "⏰ *अलर्ट किती वेळा?*\n\n1️⃣ लगेच 🚀\n2️⃣ रोज सकाळी ☀️\n3️⃣ आठवड्यातून एकदा 📅",
+    "pref_summary": "✅ प्राधान्ये सेव्ह!\n\n📍 {state_names}\n🔨 {work_types}\n💰 {min_value} — {max_value}\n🏢 {departments}\n⏰ {alerts}\n📡 {num_portals} पोर्टल\n\nमॅचिंग टेंडर मिळतील!",
+    "freq_instant": "लगेच 🚀",
+    "freq_daily": "रोज सकाळी ☀️",
+    "freq_weekly": "दर सोमवारी 📅",
+    "plan_options": "⭐ *TenderBot प्लान:*\n\n1️⃣ *१ रिपोर्ट (₹99)*\n2️⃣ *५ रिपोर्ट (₹399)* 🔥\n3️⃣ *अनलिमिटेड (₹799/महिना)* 🚀\n\n👉 *नंबर पाठवा!*",
+    "single_plan_msg": "📄 *₹99 — एक ऍनालिसिस*",
+    "pack_plan_msg": "⭐ *₹399 — ५ ऍनालिसिस पॅक*",
+    "monthly_plan_msg": "🚀 *₹799 — मंथली प्रो*",
+    "payment_link_message": "💳 पेमेंट लिंक:\n{link}\n\nपेमेंट झाल्यावर लगेच अनलॉक. 🔓",
+    "free_analysis_used": "✅ फ्री ऍनालिसिस वापरले.",
+    "payment_options_prompt": "पुढच्या टेंडरसाठी:\n\n1️⃣ ₹99 📄\n2️⃣ ₹399 पॅक ⭐\n3️⃣ ₹799 मंथली 🚀\n\n👉 *₹99:*\n{link_99}\n\n👉 *२ किंवा ३ साठी नंबर पाठवा!*",
+    "plan_free": "फ्री",
+    "plan_single": "₹99",
+    "plan_pack": "₹399 पॅक",
+    "plan_monthly": "₹799 मंथली",
+    "balance_expiry": "\n📅 एक्स्पायरी: {expiry_date} ({days_left} दिवस बाकी)",
+    "balance_details": "📊 तुमचे अकाउंट:\n\nप्लान: {plan_name}\nक्रेडिट: {credits}\nफ्री: {free_analysis_status}\nएकूण: {total_analyses}{expiry_info}\n\nअपग्रेड — \"प्लान\" टाईप करा",
+    "used": "वापरले ✓",
+    "available": "उपलब्ध ✅",
+    "alerts_paused": "✅ अलर्ट ७ दिवसांसाठी बंद.\nचालू करण्यासाठी \"अलर्ट चालू\" टाईप करा.",
+    "alerts_resumed": "✅ अलर्ट पुन्हा चालू! 🔔",
+    "no_past_analysis": "📋 मागील ऍनालिसिस नाही. PDF पाठवा!",
+    "recent_analyses_header": "📋 तुमचे अलीकडील ऍनालिसिस:",
+    "total_analyses_done": "\nएकूण: {total} ऍनालिसिस.",
+}
 
 MESSAGES = {
-    "en": {
-        "welcome_new": "👋 Welcome to *TenderBot*!\n\nI can analyze any Government Tender PDF in 3 minutes and tell you:\n✅ Are you eligible?\n✅ Hidden Risks\n✅ BOQ Rates & Profit Estimate\n\nTo begin, please select your preferred language (Reply with a number):",
-        "lang_menu": "1️⃣ English\n2️⃣ Hindi (हिंदी)\n3️⃣ Hinglish (default)\n4️⃣ Marathi (मराठी)\n\n👉 *Reply with 1, 2, 3, or 4!*",
-        "lang_set_success": "✅ Language set to *English*.\n\nNow, please send me a Tender *PDF file* or a website link, and I will analyze it instantly! 📄",
-        "menu_title": "📊 *Tender Analysis Menu*",
-        "menu_opt_1": "1️⃣ Eligibility Check (Qualify or not?)",
-        "menu_opt_2": "2️⃣ Hidden Risks & Issues",
-        "menu_opt_3": "3️⃣ BOQ Rates & Bid Amount",
-        "menu_opt_4": "4️⃣ Required Documents",
-        "menu_opt_5": "5️⃣ Cash Flow Required",
-        "menu_opt_6": "6️⃣ View Profit & Cost Estimate",
-        "menu_opt_7": "7️⃣ Full Report",
-        "menu_opt_8": "8️⃣ Download PDF ⬇️",
-        "menu_opt_9": "9️⃣ Share & Earn Free Credits 🎁",
-        "menu_footer": "👉 *Reply with 1, 2, 3...*",
-        
-        "analyzing_wait": "⏳ Analyzing your tender... please wait 2-3 minutes.",
-        "error_generic": "❌ Sorry, an error occurred. Please try again later.",
-        "unrecognized": "❓ I didn't understand that.",
-    },
-    
-    "hi": {
-        "welcome_new": "👋 *TenderBot* में आपका स्वागत है!\n\nमैं किसी भी सरकारी टेंडर PDF को 3 मिनट में पढ़कर बता सकता हूँ:\n✅ क्या आप योग्य हैं?\n✅ छुपे हुए खतरे\n✅ BOQ रेट्स और प्रॉफिट अनुमान\n\nशुरू करने के लिए, कृपया अपनी भाषा चुनें (नंबर लिखकर रिप्लाई करें):",
-        "lang_menu": "1️⃣ English\n2️⃣ Hindi (हिंदी)\n3️⃣ Hinglish (डिफ़ॉल्ट)\n4️⃣ Marathi (मराठी)\n\n👉 *1, 2, 3, या 4 टाइप करें!*",
-        "lang_set_success": "✅ भाषा *हिंदी* सेट हो गई है।\n\nअब, मुझे कोई भी टेंडर *PDF फ़ाइल* या लिंक भेजें, और मैं उसे तुरंत एनालाइज़ करूँगा! 📄",
-        "menu_title": "📊 *टेंडर एनालिसिस मेनू*",
-        "menu_opt_1": "1️⃣ योग्यता चेक (भर सकते हैं या नहीं?)",
-        "menu_opt_2": "2️⃣ छुपे हुए खतरे और दिक्कतें",
-        "menu_opt_3": "3️⃣ BOQ रेट्स और बिड अमाउंट",
-        "menu_opt_4": "4️⃣ ज़रूरी कागज़ात",
-        "menu_opt_5": "5️⃣ कितना पैसा चाहिए?",
-        "menu_opt_6": "6️⃣ प्रॉफिट और लागत का अनुमान",
-        "menu_opt_7": "7️⃣ पूरी रिपोर्ट पढ़ें",
-        "menu_opt_8": "8️⃣ PDF डाउनलोड करें ⬇️",
-        "menu_opt_9": "9️⃣ दोस्तों को शेयर करें और फ्री क्रेडिट पाएं 🎁",
-        "menu_footer": "👉 *सिर्फ 1, 2, 3... टाइप करके भेजें!*",
-        
-        "analyzing_wait": "⏳ आपका टेंडर एनालाइज़ हो रहा है... कृपया 2-3 मिनट रुकें।",
-        "error_generic": "❌ माफ़ करना, कुछ गड़बड़ हो गई। थोड़ी देर बाद कोशिश करें।",
-        "unrecognized": "❓ मुझे समझ नहीं आया।",
-    },
-    
-    "hinglish": {
-        "welcome_new": "👋 Welcome to *TenderBot*!\n\nMain kisi bhi Government Tender PDF ko 3 minute mein padh kar bata sakta hoon:\n✅ Kya aap qualify karte ho?\n✅ Hidden Risks & problems\n✅ BOQ Rates aur Profit estimate\n\nShuru karne ke liye, apni bhasha chunein (Sirf Number reply karo):",
-        "lang_menu": "1️⃣ English\n2️⃣ Hindi (हिंदी)\n3️⃣ Hinglish (Default)\n4️⃣ Marathi (मराठी)\n\n👉 *Sirf 1, 2, 3, ya 4 type karo!*",
-        "lang_set_success": "✅ Language *Hinglish* set ho gayi hai.\n\nAb, mujhe koi bhi Tender ka *PDF file* ya link bhejo, aur main turant analyze kar dunga! 📄",
-        "menu_title": "📊 *Tender Analysis Menu*",
-        "menu_opt_1": "1️⃣ Eligibility Check (Qualify karte ho?)",
-        "menu_opt_2": "2️⃣ Hidden Risks & Problems",
-        "menu_opt_3": "3️⃣ BOQ Rates & Bid Amount",
-        "menu_opt_4": "4️⃣ Required Documents",
-        "menu_opt_5": "5️⃣ Cash Flow Required (Kitna paisa chahiye)",
-        "menu_opt_6": "6️⃣ View Profit & Cost Estimate",
-        "menu_opt_7": "7️⃣ Full Report (Sab ek saath)",
-        "menu_opt_8": "8️⃣ Download PDF ⬇️",
-        "menu_opt_9": "9️⃣ Share & Earn (Free credits) 🎁",
-        "menu_footer": "👉 *Sirf 1, 2, 3... type karke bhej do!*",
-        
-        "analyzing_wait": "⏳ Aapka tender abhi analyze ho raha hai... thoda wait karo (2-3 min).",
-        "error_generic": "❌ Sorry, kuch error aa gaya. Thodi der baad try karo.",
-        "unrecognized": "❓ Samjha nahi. Kripya PDF bhejein.",
-    },
-    
-    "mr": {
-        "welcome_new": "👋 *TenderBot* मध्ये आपले स्वागत आहे!\n\nमी कोणतीही सरकारी टेंडर PDF ३ मिनिटांत वाचून सांगू शकतो:\n✅ तुम्ही पात्र आहात का?\n✅ छुपे धोके (Hidden Risks)\n✅ BOQ रेट्स आणि नफा अंदाज\n\nसुरू करण्यासाठी, कृपया तुमची भाषा निवडा (नंबर टाईप करून पाठवा):",
-        "lang_menu": "1️⃣ English\n2️⃣ Hindi (हिंदी)\n3️⃣ Hinglish (डिफॉल्ट)\n4️⃣ Marathi (मराठी)\n\n👉 *१, २, ३, किंवा ४ टाईप करा!*",
-        "lang_set_success": "✅ भाषा *मराठी* सेट झाली आहे.\n\nआता, मला कोणतीही टेंडर *PDF फाईल* किंवा लिंक पाठवा, आणि मी लगेच त्याचे विश्लेषण (Analysis) करेन! 📄",
-        "menu_title": "📊 *टेंडर ऍनालिसिस मेनू*",
-        "menu_opt_1": "1️⃣ पात्रता तपासा (क्वालिफाय आहात की नाही?)",
-        "menu_opt_2": "2️⃣ छुपे धोके आणि अडचणी",
-        "menu_opt_3": "3️⃣ BOQ रेट्स आणि बिड रक्कम",
-        "menu_opt_4": "4️⃣ आवश्यक कागदपत्रे",
-        "menu_opt_5": "5️⃣ किती पैसे लागतील?",
-        "menu_opt_6": "6️⃣ नफा आणि खर्चाचा अंदाज",
-        "menu_opt_7": "7️⃣ संपूर्ण अहवाल (Full Report)",
-        "menu_opt_8": "8️⃣ PDF डाउनलोड करा ⬇️",
-        "menu_opt_9": "9️⃣ मित्रांना शेअर करा आणि फ्री क्रेडिट्स मिळवा 🎁",
-        "menu_footer": "👉 *फक्त 1, 2, 3... टाईप करून पाठवा!*",
-        
-        "analyzing_wait": "⏳ तुमची टेंडर माहिती तपासली जात आहे... कृपया २-३ मिनिटे थांबा.",
-        "error_generic": "❌ क्षमस्व, काहीतरी चूक झाली. कृपया थोड्या वेळानंतर पुन्हा प्रयत्न करा.",
-        "unrecognized": "❓ मला समजले नाही.",
-    }
+    "hinglish": _HINGLISH,
+    "en": _ENGLISH,
+    "hi": _HINDI,
+    "mr": _MARATHI,
 }
 
 def get_string(lang_code: str, key: str) -> str:
     """Safely retrieves a translated string, falling back to Hinglish if missing."""
-    lang = lang_code.lower()
-    
-    # Map common aliases to our keys
-    if lang in ["hindi"]: lang = "hi"
-    if lang in ["english", "en_us"]: lang = "en"
-    if lang in ["marathi"]: lang = "mr"
-    if lang not in MESSAGES: lang = "hinglish"
-        
-    language_dict = MESSAGES.get(lang, MESSAGES["hinglish"])
-    return language_dict.get(key, MESSAGES["hinglish"].get(key, ""))
+    lang = lang_code.lower() if lang_code else "hinglish"
+
+    # Map common aliases
+    alias_map = {"hindi": "hi", "english": "en", "en_us": "en", "marathi": "mr"}
+    lang = alias_map.get(lang, lang)
+    if lang not in MESSAGES:
+        lang = "hinglish"
+
+    result = MESSAGES[lang].get(key)
+    if not result:
+        result = _HINGLISH.get(key, "")
+    return result
 
 def build_menu(lang_code: str) -> str:
     """Dynamically builds the 1-9 analysis menu based on the user's language."""

@@ -153,6 +153,9 @@ def detect_intent(text: str) -> str:
     # Search
     if matchesAny(["search", "dhundo", "find", "naya tender"]): return "search"
 
+    # Language change
+    if matchesAny(["language", "bhasha", "lang", "english karo", "hindi karo", "marathi karo", "change language"]): return "change_language"
+
     # Restart
     if matchesAny(["restart", "reset", "naya shuru", "shuru se", "start over", "hi", "hello", "hey"]): return "restart"
 
