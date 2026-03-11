@@ -1,15 +1,17 @@
 import os
 import time
 import json
+import re
+from typing import List, Optional
 from twilio.rest import Client
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
-from database import User, Analysis, Payment, ContractorPreference, TenderAlertLog
+from database import User, Analysis, Payment, ContractorPreference, TenderAlertLog, ReminderLog
 from payments import generate_payment_link
 from analyzer import analyze_tender_document, is_pdf_too_large
-from utils import download_twilio_media, detect_language, generate_pdf_report
+from utils import download_twilio_media, detect_language, generate_pdf_report, PLANS, format_inr
 from strings import get_string, build_menu
 from portals import (
     detect_states_from_text, detect_work_types_from_text,
@@ -29,7 +31,7 @@ TWILIO_WHATSAPP_NUMBER = os.getenv("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238
 twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# MESSAGING
+# MESSAGING — with Interactive Buttons & Lists
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def send_whatsapp_message(to_number: str, body: str, media_url: str = None):
@@ -46,10 +48,87 @@ def send_whatsapp_message(to_number: str, body: str, media_url: str = None):
         print(f"Error sending msg to {to_number}: {e}")
 
 
+def send_interactive_buttons(to_number: str, body: str, buttons: list, content_sid: str = None):
+    """
+    Send a WhatsApp message with Quick Reply buttons (up to 3).
+    
+    If a content_sid is provided (pre-approved Twilio Content Template),
+    it uses that. Otherwise, falls back to a well-formatted text message
+    with numbered options.
+    
+    buttons = [{"id": "btn_yes", "title": "Yes ✅"}, {"id": "btn_no", "title": "No ❌"}]
+    """
+    if content_sid:
+        try:
+            twilio_client.messages.create(
+                from_=TWILIO_WHATSAPP_NUMBER,
+                to=to_number,
+                content_sid=content_sid,
+            )
+            return
+        except Exception as e:
+            print(f"Interactive button send failed, falling back to text: {e}")
+
+    # Fallback: formatted text with button labels
+    btn_text = "\n".join([f"👉 *{b['title']}*" for b in buttons])
+    fallback_msg = f"{body}\n\n{btn_text}"
+    send_whatsapp_message(to_number, fallback_msg)
+
+
+def send_interactive_list(to_number: str, body: str, button_text: str, sections: list, content_sid: str = None):
+    """
+    Send a WhatsApp List Message with scrollable options.
+    
+    If a content_sid is provided, uses the Twilio Content Template.
+    Otherwise, falls back to a numbered text menu.
+    
+    sections = [
+        {
+            "title": "Analysis Menu",
+            "rows": [
+                {"id": "menu_1", "title": "Am I Eligible?", "description": "Qualification check"},
+                {"id": "menu_2", "title": "Show Hidden Risks", "description": "Khatre & problems"},
+            ]
+        }
+    ]
+    """
+    if content_sid:
+        try:
+            twilio_client.messages.create(
+                from_=TWILIO_WHATSAPP_NUMBER,
+                to=to_number,
+                content_sid=content_sid,
+            )
+            return
+        except Exception as e:
+            print(f"Interactive list send failed, falling back to text: {e}")
+
+    # Fallback: well-formatted numbered menu for text-only interfaces
+    menu_lines = [body, ""]
+    for section in sections:
+        if section.get("title"):
+            menu_lines.append(f"*{section['title']}*")
+        
+        rows = section.get("rows", [])
+        for i, row in enumerate(rows, 1):
+            # Use unicode numbers for 1-10, fallback to standard numbers if > 10
+            number_circle = [
+                "0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"
+            ]
+            num_prefix = number_circle[i] if i < len(number_circle) else f"{i}."
+            
+            desc = f" — {row['description']}" if row.get("description") else ""
+            menu_lines.append(f"{num_prefix} *{row['title']}*{desc}")
+        menu_lines.append("")
+        
+    menu_lines.append(f"👉 *{button_text}*")
+    send_whatsapp_message(to_number, "\n".join(menu_lines))
+
+
 def send_long_message(phone_number: str, text: str):
     """Splits and sends long messages in chunks."""
     if not text or text == "N/A":
-        send_whatsapp_message(phone_number, "Is section mein information available nahi hai.")
+        send_whatsapp_message(phone_number, get_string("hinglish", "section_not_available"))
         return
     if len(text) > 1500:
         chunks = [text[i:i+1500] for i in range(0, len(text), 1500)]
@@ -58,6 +137,7 @@ def send_long_message(phone_number: str, text: str):
             time.sleep(1)
     else:
         send_whatsapp_message(phone_number, text)
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # USER MANAGEMENT
@@ -220,10 +300,24 @@ def handle_incoming_message(phone_number: str, text: str, media_url: str, db: Se
             user.language_preference = "hinglish"
         elif text_lower in ["4", "marathi", "mr"]:
             user.language_preference = "mr"
+        elif text_lower in ["5", "gujarati", "gu"]:
+            user.language_preference = "gu"
         else:
             # First time ever messaging the bot
-            welcome_msg = get_string("hinglish", "welcome_new") + "\n\n" + get_string("hinglish", "lang_menu")
-            send_whatsapp_message(user.phone_number, welcome_msg)
+            welcome_msg = get_string("hinglish", "welcome_new")
+            lang_options = [
+                {"id": "lang_en", "title": "English"},
+                {"id": "lang_hi", "title": "Hindi (हिंदी)"},
+                {"id": "lang_hinglish", "title": "Hinglish"},
+                {"id": "lang_mr", "title": "Marathi (मराठी)"}
+            ]
+            sections = [{"title": "Select Language", "rows": [
+                {"id": "en", "title": "1. English", "description": "English"},
+                {"id": "hi", "title": "2. Hindi", "description": "हिंदी"},
+                {"id": "hinglish", "title": "3. Hinglish", "description": "Default"},
+                {"id": "mr", "title": "4. Marathi", "description": "मराठी"}
+            ]}]
+            send_interactive_list(user.phone_number, welcome_msg, "Select Language", sections)
             return
             
         # They picked a language, save and move to 'ready'
@@ -337,7 +431,22 @@ def start_preference_setup(user: User, db: Session):
     user.conversation_state = "awaiting_location"
     db.commit()
     msg = get_string(user.language_preference, "pref_location_prompt")
-    send_whatsapp_message(user.phone_number, msg)
+    sections = [
+        {
+            "title": "Quick Pick Locations",
+            "rows": [
+                {"id": "loc_all", "title": "1. All India (All States) 🇮🇳", "description": "Track every tender"},
+                {"id": "loc_mh", "title": "2. Maharashtra 🍊", "description": "Local MH tenders"},
+                {"id": "loc_dl", "title": "3. Delhi / NCR 🏛️", "description": "Capital region"},
+                {"id": "loc_pnh", "title": "4. Pan-North (PB, HR, CH) 🚜", "description": "Punjab, Haryana, Chandigarh"},
+                {"id": "loc_jk", "title": "5. J&K and Ladakh 🏔️", "description": "Paradise tenders"},
+                {"id": "loc_up", "title": "6. Uttar Pradesh 🚂", "description": "Large state tenders"},
+                {"id": "loc_ka", "title": "7. Karnataka 💻", "description": "South India focus"},
+                {"id": "loc_gj", "title": "8. Gujarat 💎", "description": "Western region"},
+            ]
+        }
+    ]
+    send_interactive_list(user.phone_number, msg, "Select Location", sections)
 
 
 def handle_preference_step(user: User, text: str, db: Session):
@@ -380,9 +489,23 @@ def handle_preference_step(user: User, text: str, db: Session):
         user.conversation_state = "awaiting_work_type"
         db.commit()
 
-        send_whatsapp_message(user.phone_number,
-            get_string(user.language_preference, "pref_location_noted").format(names=names, ladakh_note=ladakh_note) +
-            "\n\n" + get_string(user.language_preference, "pref_work_type_prompt"))
+        msg = get_string(user.language_preference, "pref_location_noted").format(names=names, ladakh_note=ladakh_note) + \
+              "\n\n" + get_string(user.language_preference, "pref_work_type_prompt")
+              
+        sections = [
+            {
+                "title": "Common Work Types",
+                "rows": [
+                    {"id": "work_1", "title": "1. Road Construction 🛣️", "description": "Highways, link roads"},
+                    {"id": "work_2", "title": "2. Building Construction 🏢", "description": "Civil, housing, infra"},
+                    {"id": "work_3", "title": "3. Electrical Works ⚡", "description": "Substations, wiring, LT/HT"},
+                    {"id": "work_4", "title": "4. Water Supply 💧", "description": "Pipes, Jal Jeevan, tanks"},
+                    {"id": "work_5", "title": "5. Bridge Construction 🏗️", "description": "Flyovers, culverts"},
+                    {"id": "work_6", "title": "6. Solar & Renewable ☀️", "description": "Panels, wind, green energy"},
+                ]
+            }
+        ]
+        send_interactive_list(user.phone_number, msg, "Select Work Type", sections)
 
     elif state == "awaiting_work_type":
         added_work = []
@@ -401,9 +524,22 @@ def handle_preference_step(user: User, text: str, db: Session):
         user.conversation_state = "awaiting_value_range"
         db.commit()
 
-        send_whatsapp_message(user.phone_number,
-            get_string(user.language_preference, "pref_work_type_noted").format(work_types=', '.join(work_types)) +
-            "\n\n" + get_string(user.language_preference, "pref_value_range_prompt"))
+        msg = get_string(user.language_preference, "pref_work_type_noted").format(work_types=', '.join(work_types)) + \
+              "\n\n" + get_string(user.language_preference, "pref_value_range_prompt")
+              
+        sections = [
+            {
+                "title": "Select Value Range",
+                "rows": [
+                    {"id": "val_1", "title": "1. Up to 50 Lakh", "description": "Small works"},
+                    {"id": "val_2", "title": "2. 50 Lakh - 5 Crore", "description": "Medium projects"},
+                    {"id": "val_3", "title": "3. 5 Crore - 20 Crore", "description": "Large infrastructure"},
+                    {"id": "val_4", "title": "4. 20 Crore - 100 Crore", "description": "Major works"},
+                    {"id": "val_5", "title": "5. All Amounts 🌐", "description": "No filter on value"},
+                ]
+            }
+        ]
+        send_interactive_list(user.phone_number, msg, "Select Range", sections)
 
     elif state == "awaiting_value_range":
         min_val, max_val = 0, 500000000
@@ -424,9 +560,23 @@ def handle_preference_step(user: User, text: str, db: Session):
         min_disp = format_inr(min_val)
         max_disp = format_inr(max_val)
 
-        send_whatsapp_message(user.phone_number,
-            get_string(user.language_preference, "pref_value_range_noted").format(min_disp=min_disp, max_disp=max_disp) +
-            "\n\n" + get_string(user.language_preference, "pref_departments_prompt"))
+        msg = get_string(user.language_preference, "pref_value_range_noted").format(min_disp=min_disp, max_disp=max_disp) + \
+              "\n\n" + get_string(user.language_preference, "pref_departments_prompt")
+              
+        sections = [
+            {
+                "title": "Select Departments",
+                "rows": [
+                    {"id": "dept_1", "title": "1. All Government 🏛️", "description": "Every department"},
+                    {"id": "dept_2", "title": "2. PWD / CPWD / Municipal 🏢", "description": "Building & Civil"},
+                    {"id": "dept_3", "title": "3. Highways (NHAI, BRO) 🛣️", "description": "Roads & Infra"},
+                    {"id": "dept_4", "title": "4. Railways & Metro 🚂", "description": "Track & Station works"},
+                    {"id": "dept_5", "title": "5. Water Board 💧", "description": "Sanitary & PHED"},
+                    {"id": "dept_6", "title": "6. Defence / MES 🛡️", "description": "Military infra"},
+                ]
+            }
+        ]
+        send_interactive_list(user.phone_number, msg, "Select Departments", sections)
 
     elif state == "awaiting_departments":
         added_depts = []
@@ -447,9 +597,20 @@ def handle_preference_step(user: User, text: str, db: Session):
         user.conversation_state = "awaiting_alert_freq"
         db.commit()
 
-        send_whatsapp_message(user.phone_number,
-            get_string(user.language_preference, "pref_departments_noted").format(departments=', '.join(depts)) +
-            "\n\n" + get_string(user.language_preference, "pref_alert_freq_prompt"))
+        msg = get_string(user.language_preference, "pref_departments_noted").format(departments=', '.join(depts)) + \
+              "\n\n" + get_string(user.language_preference, "pref_alert_freq_prompt")
+              
+        sections = [
+            {
+                "title": "Alert Frequency",
+                "rows": [
+                    {"id": "freq_1", "title": "1. Instant 🚀", "description": "As soon as tender is found"},
+                    {"id": "freq_2", "title": "2. Daily Morning ☀️", "description": "8 AM digest"},
+                    {"id": "freq_3", "title": "3. Weekly (Monday) 📅", "description": "Monday morning"},
+                ]
+            }
+        ]
+        send_interactive_list(user.phone_number, msg, "Select Frequency", sections)
 
     elif state == "awaiting_alert_freq":
         freq = "daily"
@@ -495,7 +656,13 @@ def change_language_request(user: User, db: Session):
     user.conversation_state = "new"  # Loop them back to the language picker
     db.commit()
     msg = get_string(user.language_preference, "lang_menu")
-    send_whatsapp_message(user.phone_number, msg)
+    sections = [{"title": "Select Language", "rows": [
+        {"id": "en", "title": "1. English", "description": "English"},
+        {"id": "hi", "title": "2. Hindi", "description": "हिंदी"},
+        {"id": "hinglish", "title": "3. Hinglish", "description": "Default"},
+        {"id": "mr", "title": "4. Marathi", "description": "मराठी"}
+    ]}]
+    send_interactive_list(user.phone_number, msg, "Select Language", sections)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # PLANS & PAYMENT
@@ -505,15 +672,28 @@ def show_plans(user: User, db: Session):
     user.conversation_state = "awaiting_payment_choice"
     db.commit()
     msg = get_string(user.language_preference, "plan_options")
-    send_whatsapp_message(user.phone_number, msg)
+    sections = [
+        {
+            "title": "Available Plans",
+            "rows": [
+                {"id": "buy_1", "title": "1. Single Analysis", "description": "₹99 - 1 Report"},
+                {"id": "buy_2", "title": "2. 5 Report Pack", "description": "₹399 - 60 Days"},
+                {"id": "buy_3", "title": "3. Monthly Pro", "description": "₹799 - Unlimited Alerts"},
+            ]
+        }
+    ]
+    send_interactive_list(user.phone_number, msg, "View Plans", sections)
 
 
 def handle_buy(user: User, intent: str, db: Session):
-    amount_map = {"buy_single": (99, "single", "1 Tender Analysis"),
-                  "buy_pack": (399, "pack", "5 Tender Pack"),
-                  "buy_monthly": (799, "monthly", "Monthly Unlimited")}
-
-    amount, plan_type, desc = amount_map.get(intent, (99, "single", "1 Tender Analysis"))
+    # Determine plan type from intent
+    plan_type = intent.replace("buy_", "")
+    if plan_type not in PLANS:
+        plan_type = "single"
+        
+    plan = PLANS[plan_type]
+    amount = plan["price"]
+    desc = plan["description"]
 
     # Show plan details
     plan_msgs = {
@@ -661,7 +841,18 @@ def request_payment(user: User, db: Session):
 
     user.conversation_state = "awaiting_payment_choice"
     db.commit()
-    send_whatsapp_message(user.phone_number, msg)
+    
+    sections = [
+        {
+            "title": "Upgrade Now",
+            "rows": [
+                {"id": "pay_1", "title": "₹99 - 1 Analysis", "description": "Pay instantly"},
+                {"id": "pay_2", "title": "₹399 - 5 Pack", "description": "Best value for small contractors"},
+                {"id": "pay_3", "title": "₹799 - Monthly Pro", "description": "Auto-analysis & unlimited alerts"},
+            ]
+        }
+    ]
+    send_interactive_list(user.phone_number, msg, "Select Plan", sections)
 
 
 def process_pdf_background(phone_number: str, media_url: str):
@@ -682,6 +873,13 @@ def process_pdf_background(phone_number: str, media_url: str):
         send_whatsapp_message(phone_number, get_string(user.language_preference, "still_analyzing"))
 
         analysis_json = analyze_tender_document(pdf_path, user.language_preference)
+
+        if "error" in analysis_json:
+            if analysis_json["error"] == "OCR_FAILED_TINY":
+                send_whatsapp_message(phone_number, get_string(user.language_preference, "ocr_failed_manual_download"))
+                user.conversation_state = "ready"
+                db.commit()
+                return
 
         # Deduct credit
         # Increment usage AFTER successful analysis
@@ -707,18 +905,36 @@ def process_pdf_background(phone_number: str, media_url: str):
                     referrer.paid_credits_remaining += 1
                     db.commit()
                     # Notify the referrer!
-                    reward_msg = (
-                        "🎉 *Badhai Ho!*\n\n"
-                        f"Aapke dost ne abhi TenderBot ka use kiya.\n"
-                        f"Aapke account mein *+1 FREE Paid Analysis* add kar diya gaya hai! 🎁\n\n"
-                        f"Aap abhi koi bhi naya Tender PDF bhej kar isko use kar sakte hain."
-                    )
+                    reward_msg = get_string(user.language_preference, "referral_reward")
                     send_whatsapp_message(referrer.phone_number, reward_msg)
+
+        # Extract deadline for reminders
+        deadline_raw = analysis_json.get("deadline_date", "N/A")
+        deadline_obj = None
+        try:
+            # Try to parse a date out of Gemini's response
+            if deadline_raw and deadline_raw != "N/A":
+                # Assuming Gemini gives ISO-ish or simple dates, we'll try basic parsing
+                # For now, let's look for DD-MM-YYYY or YYYY-MM-DD
+                match = re.search(r"(\d{4}-\d{2}-\d{2})", deadline_raw)
+                if not match:
+                    match = re.search(r"(\d{2}-\d{2}-\d{4})", deadline_raw)
+                if match:
+                    from datetime import datetime
+                    dstr = match.group(1)
+                    if "-" in dstr:
+                        if dstr.index("-") == 4: # YYYY-MM-DD
+                            deadline_obj = datetime.strptime(dstr, "%Y-%m-%d")
+                        else: # DD-MM-YYYY
+                            deadline_obj = datetime.strptime(dstr, "%d-%m-%d-%Y")
+        except Exception as e:
+            print(f"Deadline parsing failed: {e}")
 
         new_analysis = Analysis(
             user_phone=user.phone_number,
             tender_summary=analysis_json.get("department", "Tender"),
-            analysis_result=json.dumps(analysis_json)
+            analysis_result=json.dumps(analysis_json),
+            deadline_date=deadline_obj
         )
         db.add(new_analysis)
         db.commit()
@@ -732,51 +948,49 @@ def process_pdf_background(phone_number: str, media_url: str):
             time.sleep(2)
 
         # ── Quick Verdict ──
-        verdict = f"""━━━━━━━━━━━━━━━━━━━━━━━━
-📋 {analysis_json.get('department', 'Dept')} — {analysis_json.get('work_description', 'Work')}
-💰 Value: ₹{analysis_json.get('value', 'N/A')}
-📅 Deadline: {analysis_json.get('deadline_date', 'N/A')} ({analysis_json.get('days_remaining', 'X')} din baaki)
-
-⚡ VERDICT: {analysis_json.get('quick_verdict_recommendation', 'N/A')} — {analysis_json.get('quick_verdict_score', 'N/A')}/10
-
-🔴 {analysis_json.get('critical_risks_count', '0')} Critical risks
-🟡 {analysis_json.get('warnings_count', '0')} Warnings
-💡 Recommended bid: ₹{analysis_json.get('recommended_bid', 'N/A')}
-💰 Estimated profit: ₹{analysis_json.get('estimated_profit', 'N/A')}
-━━━━━━━━━━━━━━━━━━━━━━━━
-
-Kya dekhna chahte ho?
-(Bina type kiye, sirf *Number* reply karo!)
-
-1️⃣ *Am I Eligible?* (Qualify check)
-2️⃣ *Show Hidden Risks* (Khatre)
-3️⃣ *Get Bid Strategy* (BOQ Rates)
-4️⃣ *Action & Documents* (Kya karna hai)
-5️⃣ *Cash Flow Check* (Working capital)
-6️⃣ *View Profit & Cost* (Estimate)
-7️⃣ *Full Report* (Sab ek saath)
-8️⃣ *Download PDF* ⬇️
-9️⃣ *Share & Earn* (Free credits) 🎁
-
-👉 *Sirf 1, 2, 3... type karke bhej do!*"""
-
-        send_whatsapp_message(phone_number, verdict)
+        verdict_text = get_string(user.language_preference, "verdict_header").format(
+            department=analysis_json.get('department', 'Dept'),
+            work=analysis_json.get('work_description', 'Work'),
+            value=analysis_json.get('value', 'N/A'),
+            deadline=analysis_json.get('deadline_date', 'N/A'),
+            days=analysis_json.get('days_remaining', 'X'),
+            verdict=analysis_json.get('quick_verdict_recommendation', 'N/A'),
+            score=analysis_json.get('quick_verdict_score', 'N/A'),
+            critical=analysis_json.get('critical_risks_count', '0'),
+            warnings=analysis_json.get('warnings_count', '0'),
+            bid=analysis_json.get('recommended_bid', 'N/A'),
+            profit=analysis_json.get('estimated_profit', 'N/A'),
+        )
+        
+        sections = [
+            {
+                "title": "Explore Analysis",
+                "rows": [
+                    {"id": "menu_1", "title": "Am I Eligible?", "description": "Check qualification info"},
+                    {"id": "menu_2", "title": "Show Hidden Risks", "description": "Critical issues & warnings"},
+                    {"id": "menu_3", "title": "Get Bid Strategy", "description": "BOQ Rates & Bid amount"},
+                    {"id": "menu_4", "title": "Action & Documents", "description": "Required checklist"},
+                    {"id": "menu_5", "title": "Cash Flow Check", "description": "Working capital needs"},
+                    {"id": "menu_6", "title": "View Profit & Cost", "description": "Full breakdown"},
+                    {"id": "menu_7", "title": "Full Report", "description": "Everything in one go"},
+                    {"id": "menu_8", "title": "Download PDF", "description": "Save for later"},
+                    {"id": "menu_9", "title": "Share & Earn", "description": "Refer a friend for +1 credit"},
+                ]
+            }
+        ]
+        send_interactive_list(phone_number, verdict_text, "View Analysis Menu", sections)
 
         # ── Upgrade nudge for free users ──
         if user.subscription_type == "free" and user.free_analyses_used >= 1:
             time.sleep(3)
             send_whatsapp_message(phone_number,
-                "💡 Yeh analysis aapko kaisa laga?\n\n"
-                "Agle tender ke liye:\n"
-                "₹399 = 5 analyses (₹80 each)\n"
-                "₹799 = Unlimited + auto alerts\n\n"
-                "Type karo \"plan\" for details.")
+                get_string(user.language_preference, "upgrade_nudge_post_analysis"))
 
         os.remove(pdf_path)
 
     except Exception as e:
         send_whatsapp_message(phone_number,
-            "Thoda technical issue hua. 2 minute mein dobara try karo.")
+            get_string(user.language_preference if user else "hinglish", "technical_error"))
         print(f"Error processing PDF: {e}")
         if user:
             user.conversation_state = "ready"
@@ -793,7 +1007,7 @@ def handle_menu(user: User, intent: str, text: str, latest_analysis: Analysis, d
         data = json.loads(latest_analysis.analysis_result)
     except Exception:
         send_whatsapp_message(user.phone_number,
-            "Purana analysis parse nahi ho raha. PDF dobara bhejo.")
+            get_string(user.language_preference, "analysis_parse_error"))
         return
 
     section_map = {
@@ -836,19 +1050,7 @@ def handle_menu(user: User, intent: str, text: str, latest_analysis: Analysis, d
 
     # Unknown intent inside menu
     send_whatsapp_message(user.phone_number,
-        "Samjha nahi. Sirf option ka *Number* reply karo:\n\n"
-        "1️⃣ Am I Eligible?\n"
-        "2️⃣ Show Hidden Risks\n"
-        "3️⃣ Get Bid Strategy\n"
-        "4️⃣ Action & Documents\n"
-        "5️⃣ Cash Flow Check\n"
-        "6️⃣ View Profit & Cost\n"
-        "7️⃣ Full Report\n"
-        "8️⃣ Download PDF\n"
-        "9️⃣ Share & Earn 🎁\n\n"
-        "Ya type karo:\n"
-        "💳 *Plan* — Upgrade karne ke liye\n"
-        "⚙️ *Alerts* — Preferences set karne ke liye")
+        get_string(user.language_preference, "menu_fallback"))
 
 def send_share_message(user: User, db: Session):
     """Generates the viral referral loop message and link."""
@@ -887,7 +1089,7 @@ def send_share_message(user: User, db: Session):
 
 
 def generate_and_send_pdf(user: User, data: dict):
-    send_whatsapp_message(user.phone_number, "PDF report generate ho rahi hai... ⏳")
+    send_whatsapp_message(user.phone_number, get_string(user.language_preference, "pdf_generating"))
     pdf_path = generate_pdf_report(data, user.phone_number)
 
     try:
@@ -901,13 +1103,13 @@ def generate_and_send_pdf(user: User, data: dict):
         if railway_url:
             public_url = f"{railway_url}/static/pdfs/{pdf_filename}"
             send_whatsapp_message(user.phone_number,
-                "Lijiye aapki PDF report ready hai! 📄", media_url=public_url)
+                get_string(user.language_preference, "pdf_ready"), media_url=public_url)
         else:
             send_whatsapp_message(user.phone_number,
-                "PDF generate ho gayi par download link abhi set nahi hai.")
+                get_string(user.language_preference, "pdf_link_not_set"))
     except Exception as e:
         print(f"Error serving PDF: {e}")
-        send_whatsapp_message(user.phone_number, "PDF attach karne mein issue aaya. Dobara try karo.")
+        send_whatsapp_message(user.phone_number, get_string(user.language_preference, "pdf_attach_error"))
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # PAYMENT WEBHOOK HANDLER (called from main.py)
@@ -915,36 +1117,32 @@ def generate_and_send_pdf(user: User, data: dict):
 
 def handle_payment_success(user: User, amount: int, plan_type: str, db: Session):
     """Called by main.py webhook when Razorpay confirms payment."""
-    if plan_type == "single" or amount == 99:
-        user.paid_credits_remaining += 1
-        user.subscription_type = "single"
-        user.alert_tier = "free"
-        unlock_msg = "Payment received! ✅\n1 analysis unlock ho gaya.\n\nTender PDF bhejo! 📄"
-
-    elif plan_type == "pack" or amount == 399:
-        user.paid_credits_remaining += 5
-        user.subscription_type = "pack"
-        user.alert_tier = "basic"
-        user.subscription_expiry = datetime.utcnow() + timedelta(days=60)
-        unlock_msg = ("Payment received! ✅\n5 analyses unlock ho gaye.\n"
-                      "60 din valid hai.\n\n"
-                      "Ab alerts mein brief analysis bhi milega!\n"
-                      "Tender PDF bhejo ya alerts ka wait karo! 📄")
-
-    elif plan_type == "monthly" or amount == 799:
-        user.paid_credits_remaining = 30
-        user.subscription_type = "monthly"
-        user.alert_tier = "full"
-        user.subscription_expiry = datetime.utcnow() + timedelta(days=30)
-        unlock_msg = ("Payment received! ✅\n⭐ Monthly Unlimited plan active!\n\n"
-                      "30 analyses + UNLIMITED alert analyses\n"
-                      "Bot tenders dhundega aapke liye\n"
-                      "Full analysis with every alert — FREE\n\n"
-                      "Preferences set karo: type \"alert chahiye\"\n"
-                      "Ya tender PDF bhejo abhi! 📄")
-    else:
-        user.paid_credits_remaining += 1
-        unlock_msg = "Payment received! ✅\nCredits add ho gaye."
+    # Ensure plan_type is valid
+    if plan_type not in PLANS:
+        # Fallback detection by amount if plan_type is corrupted
+        plan_type = "single"
+        for p_key, p_val in PLANS.items():
+            if amount == p_val["price"]:
+                plan_type = p_key
+                break
+    
+    plan_config = PLANS[plan_type]
+    
+    user.subscription_type = plan_type
+    user.alert_tier = plan_config["alert_tier"]
+    user.paid_credits_remaining += plan_config["credits"]
+    
+    if plan_config["expiry_days"]:
+        user.subscription_expiry = datetime.utcnow() + timedelta(days=plan_config["expiry_days"])
+    
+    # Success message based on plan type
+    success_keys = {
+        "single": "payment_single_success",
+        "pack": "payment_pack_success",
+        "monthly": "payment_monthly_success"
+    }
+    key = success_keys.get(plan_type, "payment_generic_success")
+    unlock_msg = get_string(user.language_preference, key)
 
     db.commit()
     send_whatsapp_message(user.phone_number, unlock_msg)
@@ -956,22 +1154,20 @@ def handle_payment_success(user: User, amount: int, plan_type: str, db: Session)
 def send_upgrade_nudge(user: User, db: Session):
     """Called periodically or after certain triggers."""
     if user.subscription_type == "free" and user.free_analyses_used >= 1:
-        send_whatsapp_message(user.phone_number,
-            "Aapko matching tenders mil rahe hain.\n"
-            "Ek bhi analyze nahi kiya abhi tak.\n\n"
-            "₹399 mein 5 analyses milte hain.\n"
-            "Sirf ₹80 per tender.\n\n"
-            "Type karo: \"399 wala\"")
+        msg = get_string(user.language_preference, "upgrade_nudge_free")
+        buttons = [
+            {"id": "buy_pack", "title": "₹399 - 5 Pack 🔥"},
+            {"id": "show_plans", "title": "View All Plans 💰"}
+        ]
+        send_interactive_buttons(user.phone_number, msg, buttons)
 
     elif user.subscription_type == "pack" and user.paid_credits_remaining <= 1:
-        send_whatsapp_message(user.phone_number,
-            f"Sirf {user.paid_credits_remaining} credit bacha hai.\n\n"
-            "Renew karo ₹399 — 5 aur analyses\n"
-            "Ya upgrade karo ₹799/month:\n"
-            "→ 30 analyses\n"
-            "→ Alert with full analysis\n"
-            "→ Search unlimited\n\n"
-            "Type karo: \"plan\"")
+        msg = get_string(user.language_preference, "upgrade_nudge_low_credits").format(credits=user.paid_credits_remaining)
+        buttons = [
+            {"id": "buy_pack", "title": "Renew ₹399 ♻️"},
+            {"id": "buy_monthly", "title": "Upgrade ₹799 🚀"}
+        ]
+        send_interactive_buttons(user.phone_number, msg, buttons)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # MONTHLY REPORT (for ₹799 users)
@@ -991,24 +1187,25 @@ def generate_monthly_report(user: User, db: Session) -> str:
     analysis_count = len(analyses)
     alert_count = len(alerts)
     free_alert_analyses = len([a for a in alerts if a.alert_type == "full"])
+    
+    # Savings calculation
     consultant_savings = analysis_count * 10000
+    plan_cost = PLANS.get("monthly", {}).get("price", 799)
+    total_savings = consultant_savings - plan_cost
+    
+    days_left = 30
+    if user.subscription_expiry:
+        days_left = max(0, (user.subscription_expiry - datetime.utcnow()).days)
 
-    msg = f"""📊 Aapka Monthly Report
-━━━━━━━━━━━━━━━━━━━━━━
-
-ANALYSES THIS MONTH: {analysis_count}/30
-ALERTS RECEIVED: {alert_count}
-ALERT ANALYSES: {free_alert_analyses} (free)
-
-MONEY SAVED VS CONSULTANT:
-{analysis_count} analyses × ₹10,000 = ₹{analysis_count * 10000:,}
-You paid: ₹799
-You saved: ₹{consultant_savings - 799:,}
-
-━━━━━━━━━━━━━━━━━━━━━━
-Aapka plan kal expire hoga.
-Renew karo — koi tender miss mat ho.
-Type karo: \"renew\""""
+    msg = get_string(user.language_preference, "monthly_report_template").format(
+        analysis_count=analysis_count,
+        alert_count=alert_count,
+        free_alert_analyses=free_alert_analyses,
+        savings=consultant_savings,
+        paid=plan_cost,
+        total_savings=total_savings,
+        days_left=days_left
+    )
 
     return msg
 
@@ -1016,13 +1213,4 @@ Type karo: \"renew\""""
 # HELPERS
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def format_inr(amount: int) -> str:
-    """Formats amount in Indian style: 50,00,000 → ₹50 Lakhs"""
-    if amount >= 10000000:
-        return f"₹{amount / 10000000:.1f} Crores"
-    elif amount >= 100000:
-        return f"₹{amount / 100000:.1f} Lakhs"
-    elif amount >= 1000:
-        return f"₹{amount / 1000:.0f}K"
-    else:
-        return f"₹{amount}"
+# Removed format_inr from bot.py as it is now in utils.py

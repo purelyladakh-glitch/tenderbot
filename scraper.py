@@ -21,9 +21,10 @@ import requests
 from bs4 import BeautifulSoup
 from sqlalchemy.orm import Session
 
-from database import SessionLocal, Base, engine, ContractorPreference, TenderRecord, TenderAlertLog, User
+from database import SessionLocal, Base, engine, ContractorPreference, TenderRecord, TenderAlertLog, User, Analysis, ReminderLog
 from bot import send_whatsapp_message
 from strings import get_string
+from analyzer import quick_tender_summary
 
 load_dotenv()
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -50,6 +51,9 @@ SCRAPE_PORTALS = [
     {"domain": "hptenders.gov.in",     "state": "Himachal Pradesh",  "type": "nicgep"},
     {"domain": "uktenders.gov.in",     "state": "Uttarakhand",       "type": "nicgep"},
     {"domain": "eproc.punjab.gov.in",  "state": "Punjab",            "type": "nicgep"},
+    # --- Added from audit ---
+    {"domain": "mahatenders.gov.in",   "state": "Maharashtra",       "type": "nicgep"},
+    {"domain": "tenderwizard.com/GUVNL", "state": "Gujarat",         "type": "nicgep"},
 ]
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -112,15 +116,34 @@ def scrape_nicgep_portal(domain: str, state_label: str, max_tenders: int = 20) -
 
         # --- Extract Tender ID ---
         tender_id = None
-        id_match = re.search(r"Tender\s*ID\s*:\s*(\S+)", title_td.text, re.IGNORECASE)
+        id_text = title_td.text
+        
+        # Regex for common patterns
+        id_match = re.search(r"Tender\s*ID\s*[:\-]\s*([A-Z0-9_/.\-]+)", id_text, re.IGNORECASE)
         if id_match:
             tender_id = id_match.group(1).strip()
+            
         if not tender_id:
-            ref_match = re.search(r"Ref\.?\s*No\.?\s*:\s*(\S+)", title_td.text, re.IGNORECASE)
+            ref_match = re.search(r"Ref\.?\s*No\.?[\s\-]*[:\-]*\s*([A-Z0-9_/.\-]+)", id_text, re.IGNORECASE)
             if ref_match:
                 tender_id = ref_match.group(1).strip()
+        
+        # Try finding in the link URL (nicgep specific)
+        if not tender_id and title_link and title_link.get("href"):
+            href = title_link.get("href")
+            # Usually href contains something like tenderId=123
+            url_id_match = re.search(r"tender(?:Id|ID)=([A-Z0-9_\-]+)", href, re.IGNORECASE)
+            if url_id_match:
+                tender_id = url_id_match.group(1).strip()
+
         if not tender_id:
-            tender_id = f"{domain}_{hash(title) % 100000}"
+            # Hash-based fallback if all else fails
+            import hashlib
+            h = hashlib.md5(title.encode()).hexdigest()[:8]
+            tender_id = f"fallback_{h}"
+
+        # Clean ID (remove trailing dots, brackets)
+        tender_id = tender_id.rstrip(".]")
 
         # --- Organisation Chain ---
         org_chain = cols[5].text.strip()
@@ -394,14 +417,35 @@ def match_and_alert():
                 send_whatsapp_message(user.phone_number, alert_msg)
                 alert_count += 1
 
-                # Log the alert
-                log = TenderAlertLog(
-                    user_phone=pref.phone_number,
-                    tender_id=t["external_id"],
-                    alert_type=user.alert_tier or "free",
-                )
-                db.add(log)
-                db.commit()
+                # ── ₹799 MONTHLY PRO: Auto Gemini Analysis ──
+                # Monthly Pro users get free AI analysis with every matching alert
+                if user.alert_tier == "full" and user.subscription_type == "monthly":
+                    try:
+                        ai_summary = quick_tender_summary(
+                            title=record.title,
+                            department=record.department,
+                            state=record.state,
+                            value=record.value_inr,
+                        )
+                        if ai_summary:
+                            send_whatsapp_message(user.phone_number,
+                                f"🤖 *AI Quick Analysis (Pro Benefit):*\n\n{ai_summary}")
+                            print(f"  → Sent auto-analysis for {record.external_id} to {user.phone_number}")
+                    except Exception as ae:
+                        print(f"  ✗ Auto-analysis failed for {record.external_id}: {ae}")
+
+                # Log the alert and commit
+                try:
+                    log = TenderAlertLog(
+                        user_phone=pref.phone_number,
+                        tender_id=t["external_id"],
+                        alert_type=user.alert_tier or "free",
+                    )
+                    db.add(log)
+                    db.commit()
+                except Exception as db_err:
+                    db.rollback()
+                    print(f"  ✗ Failed to log alert for {pref.phone_number}: {db_err}")
 
         print(f"\n✅ Run complete: {new_count} new tenders, {alert_count} alerts sent.")
 
@@ -409,6 +453,106 @@ def match_and_alert():
         print(f"❌ Scraper error: {e}")
         import traceback
         traceback.print_exc()
+    finally:
+        db.close()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# DEADLINE REMINDERS
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def check_deadlines_and_remind():
+    """
+    Scans all Analysis records for upcoming deadlines.
+    Sends reminders at 7d, 2d, 1d, and 0d intervals.
+    Run this daily at 7:00 AM.
+    """
+    print("\n⏰ Checking tender deadlines for reminders...")
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        today = now.date()
+
+        # Get all analyses that have a deadline in the future or today
+        active_analyses = db.query(Analysis).filter(
+            Analysis.deadline_date >= today
+        ).all()
+
+        remind_count = 0
+        for analysis in active_analyses:
+            user = db.query(User).filter(User.phone_number == analysis.user_phone).first()
+            if not user:
+                continue
+
+            days_left = (analysis.deadline_date.date() - today).days
+            
+            # Determine which reminder trigger to use
+            trigger = None
+            if days_left == 7: trigger = "7d"
+            elif days_left == 2: trigger = "2d"
+            elif days_left == 1: trigger = "1d"
+            elif days_left == 0: trigger = "0d"
+
+            if not trigger:
+                continue
+
+            # Check if already sent
+            log = db.query(ReminderLog).filter(
+                ReminderLog.analysis_id == analysis.id,
+                ReminderLog.user_phone == user.phone_number
+            ).first()
+
+            if not log:
+                log = ReminderLog(
+                    user_phone=user.phone_number,
+                    tender_id=str(analysis.id), # Fallback ID
+                    analysis_id=analysis.id,
+                    deadline=analysis.deadline_date,
+                    reminders_sent="[]"
+                )
+                db.add(log)
+                db.commit()
+                db.refresh(log)
+
+            sent_list = json.loads(log.reminders_sent)
+            if trigger in sent_list:
+                continue
+
+            # Send reminder
+            lang = user.language_preference
+            tender_data = {}
+            try:
+                tender_data = json.loads(analysis.analysis_result or "{}")
+            except: pass
+
+            tender_name = tender_data.get("work_description", analysis.tender_summary or "Tender")
+            dept = tender_data.get("department", "Govt Dept")
+            deadline_str = analysis.deadline_date.strftime("%d-%m-%Y")
+            deadline_time = tender_data.get("deadline_time", "5:00 PM")
+
+            msg_key = f"reminder_{trigger}"
+            msg_tmpl = get_string(lang, msg_key)
+            
+            if trigger in ["1d", "0d"]:
+                msg = msg_tmpl.format(name=tender_name, time=deadline_time)
+            elif trigger == "2d":
+                msg = msg_tmpl.format(name=f"{tender_name} ({dept})", deadline=f"{deadline_str} {deadline_time}")
+            else: # 7d
+                msg = msg_tmpl.format(name=f"{tender_name} ({dept})", deadline=f"{deadline_str} {deadline_time}", short_name=tender_name[:20])
+
+            send_whatsapp_message(user.phone_number, msg)
+            
+            # Update log
+            sent_list.append(trigger)
+            log.reminders_sent = json.dumps(sent_list)
+            db.commit()
+            remind_count += 1
+            print(f"  → Sent {trigger} reminder to {user.phone_number} for {tender_name}")
+
+        print(f"✅ Deadline check complete: {remind_count} reminders sent.")
+
+    except Exception as e:
+        print(f"❌ Reminder job error: {e}")
     finally:
         db.close()
 
@@ -426,9 +570,15 @@ def run_scraper_schedule():
 
     # Run once immediately on boot
     match_and_alert()
+    
+    # Run deadline check once on boot
+    check_deadlines_and_remind()
 
-    # Then every 6 hours
+    # Schedule: Every 6 hours for scraping
     schedule.every(6).hours.do(match_and_alert)
+
+    # Schedule: Every morning at 7am for reminders
+    schedule.every().day.at("07:00").do(check_deadlines_and_remind)
 
     while True:
         schedule.run_pending()

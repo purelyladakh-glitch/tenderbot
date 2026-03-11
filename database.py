@@ -59,6 +59,7 @@ class Analysis(Base):
     user_phone = Column(String, index=True)
     tender_summary = Column(String)
     analysis_result = Column(Text)  # JSON text
+    deadline_date = Column(DateTime, nullable=True) # Extracted deadline
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -84,6 +85,18 @@ class TenderAlertLog(Base):
     sent_at = Column(DateTime, default=datetime.utcnow)
     user_response = Column(String, default="ignored")  # yes / no / later / ignored
     followed_up = Column(Boolean, default=False)
+
+
+class ReminderLog(Base):
+    __tablename__ = "reminder_log"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_phone = Column(String, index=True)
+    tender_id = Column(String, index=True)
+    analysis_id = Column(Integer, index=True)
+    deadline = Column(DateTime)
+    reminders_sent = Column(Text, default="[]") # JSON list: ["7d", "2d", "1d", "0d"]
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class TenderRecord(Base):

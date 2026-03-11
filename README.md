@@ -24,6 +24,14 @@ AI-powered WhatsApp bot for Indian government contractors. Send a tender PDF →
 - SQLite + SQLAlchemy (database)
 - Railway.app (deployment)
 
+## System Requirements
+
+- **Server requires**: `tesseract-ocr`, `poppler-utils`
+- These are auto-installed via `nixpacks.toml` on Railway deployment.
+- Locally, you must install them manually:
+  - Windows: [Tesseract Installer](https://github.com/UB-Mannheim/tesseract/wiki), [Poppler for Windows](http://blog.alivate.com.au/poppler-windows/)
+  - Linux: `sudo apt install tesseract-ocr poppler-utils`
+
 ## Project Structure
 
 ```

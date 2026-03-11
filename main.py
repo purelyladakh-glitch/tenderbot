@@ -9,6 +9,7 @@ from pathlib import Path
 from database import engine, get_db, Base, Payment, User
 from bot import handle_incoming_message, send_whatsapp_message, handle_payment_success
 from payments import verify_webhook_signature
+from utils import PLANS
 
 # Create all tables in sqlite DB automatically
 Base.metadata.create_all(bind=engine)
@@ -66,30 +67,39 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
             user = db.query(User).filter(User.phone_number == phone).first() if phone else None
             
             if user:
-                # Determine plan type from amount
-                if amount_paid == 99:
-                    plan_type = "single"
-                elif amount_paid == 399:
-                    plan_type = "pack"
-                elif amount_paid == 799:
-                    plan_type = "monthly"
-                else:
-                    plan_type = "single"
+                # Match with our internal Payment record
+                razorpay_order_id = payment_entity.get("order_id") or payment_entity.get("id")
                 
-                # Use the bot's handler for clean subscription logic
-                handle_payment_success(user, int(amount_paid), plan_type, db)
-                
-                # Update payment record
-                razorpay_id = payment_entity.get("id", "")
                 payment_record = db.query(Payment).filter(
-                    Payment.user_phone == phone,
-                    Payment.status == "created"
-                ).order_by(Payment.id.desc()).first()
-                
-                if payment_record:
+                    Payment.razorpay_order_id == razorpay_order_id
+                ).first()
+
+                if not payment_record:
+                    # Fallback to user phone + status if order_id is missing or different
+                    payment_record = db.query(Payment).filter(
+                        Payment.user_phone == phone,
+                        Payment.status == "created"
+                    ).order_by(Payment.id.desc()).first()
+
+                if payment_record and payment_record.status == "created":
+                    # Use plan_type from our record, or infer from amount if record missing
+                    plan_type = payment_record.plan_type
+                    
+                    # Use the bot's handler for clean subscription logic
+                    handle_payment_success(user, int(amount_paid), plan_type, db)
+                    
                     payment_record.status = "paid"
-                    payment_record.razorpay_order_id = razorpay_id
+                    payment_record.razorpay_order_id = payment_entity.get("id", razorpay_order_id)
                     db.commit()
+                elif user:
+                    # Emergency fallback if no record found but user exists
+                    # Determine plan type from amount using PLANS config
+                    plan_type = "single"
+                    for p_key, p_val in PLANS.items():
+                        if amount_paid == p_val["price"]:
+                            plan_type = p_key
+                            break
+                    handle_payment_success(user, int(amount_paid), plan_type, db)
         
         return JSONResponse({"status": "ok"})
     except Exception as e:

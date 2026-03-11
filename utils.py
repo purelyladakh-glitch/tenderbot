@@ -9,6 +9,42 @@ load_dotenv()
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 
+# Centralized Plan Configuration
+PLANS = {
+    "single": {
+        "price": 99,
+        "credits": 1,
+        "alert_tier": "free",
+        "description": "1 Tender Analysis",
+        "expiry_days": None
+    },
+    "pack": {
+        "price": 399,
+        "credits": 5,
+        "alert_tier": "basic",
+        "description": "5 Tender Pack",
+        "expiry_days": 60
+    },
+    "monthly": {
+        "price": 799,
+        "credits": 30, # Soft limit
+        "alert_tier": "full",
+        "description": "Monthly Unlimited",
+        "expiry_days": 30
+    }
+}
+
+def format_inr(amount: int) -> str:
+    """Formats amount in Indian style: 50,00,000 → ₹50 Lakhs"""
+    if amount >= 10000000:
+        return f"₹{amount / 10000000:.1f} Crores"
+    elif amount >= 100000:
+        return f"₹{amount / 100000:.1f} Lakhs"
+    elif amount >= 1000:
+        return f"₹{amount / 1000:.0f}K"
+    else:
+        return f"₹{amount}"
+
 def download_twilio_media(media_url: str) -> str:
     """Downloads media from Twilio to a temporary file."""
     response = requests.get(media_url, auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN))
@@ -30,9 +66,11 @@ def detect_language(text: str) -> str:
         return "Marathi"
     if any(word in text_lower for word in ["gujarati", "kem", "cho", "che"]):
         return "Gujarati"
-    if any(word in text_lower for word in ["tamil", "eppadi", "irukke", "vanakkam"]):
+    if any(word in text_lower for word in ["tamil", "eppadi", "irukke", "vanakkam", "tn"]) or text_lower.endswith(("m", "n")):
+        # Simple suffix check for Tamil (words ending in m/n)
         return "Tamil"
-    if any(word in text_lower for word in ["telugu", "ela", "unnaru", "namaskaram"]):
+    if any(word in text_lower for word in ["telugu", "ela", "unnaru", "namaskaram", "ap", "ts"]) or text_lower.endswith(("du", "nu")):
+        # Simple suffix check for Telugu (words ending in du/nu)
         return "Telugu"
     if any(word in text_lower for word in ["hi", "hello", "what", "is", "this", "english"]):
         return "English"

@@ -1,0 +1,6 @@
+[phases.setup]
+nixPkgs = [
+  "tesseract",
+  "poppler_utils",
+  "python311"
+]
