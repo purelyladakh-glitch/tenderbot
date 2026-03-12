@@ -5,7 +5,7 @@ AI-powered WhatsApp bot for Indian government contractors. Send a tender PDF →
 ## Features
 
 - ✅ **9-part Tender Analysis** via Google Gemini 3 Flash
-- ✅ **WhatsApp Interface** via Twilio
+- ✅ **WhatsApp Interface** via AiSensy
 - ✅ **Natural Language** — Hindi, English, Hinglish, regional languages
 - ✅ **All India Coverage** — 28 states, 8 UTs, 20+ central portals
 - ✅ **Ladakh Special Focus** — BRO, NHIDCL, LAHDC, MES tracking
@@ -19,7 +19,7 @@ AI-powered WhatsApp bot for Indian government contractors. Send a tender PDF →
 
 - Python 3.11 / FastAPI / Uvicorn
 - Google Gemini 3 Flash Preview (AI analysis)
-- Twilio WhatsApp API
+- AiSensy WhatsApp API
 - Razorpay (payments)
 - SQLite + SQLAlchemy (database)
 - Railway.app (deployment)
@@ -54,9 +54,8 @@ AI-powered WhatsApp bot for Indian government contractors. Send a tender PDF →
 
 ```
 GEMINI_API_KEY=
-TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
+AISENSY_API_KEY=
+AISENSY_PHONE=
 RAZORPAY_KEY_ID=
 RAZORPAY_KEY_SECRET=
 RAILWAY_URL=https://your-app.up.railway.app
@@ -70,7 +69,7 @@ PORT=8000
 2. Connect repo to Railway
 3. Add env variables in Railway dashboard
 4. Railway auto-deploys
-5. Set Twilio webhook: `https://your-domain/webhook`
+5. Set AiSensy (Pro) webhook: `https://your-domain/receive_message`
 6. Set Razorpay webhook: `https://your-domain/payment-webhook`
 
 ## Phase 2 — Automated Scraping (Not Yet Active)
