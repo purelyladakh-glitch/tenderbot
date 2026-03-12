@@ -2,7 +2,7 @@
 TenderBot — Background Scraper Worker
 Runs independently of the FastAPI web server.
 Pulls live tenders from government portals, matches them against
-ContractorPreference records, and sends WhatsApp alerts via Twilio.
+ContractorPreference records, and sends WhatsApp alerts via AiSensy.
 
 Deploy on Railway as a separate "Worker" service:
   python scraper.py
