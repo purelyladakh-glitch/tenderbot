@@ -6,54 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-
-# Centralized Plan Configuration
-PLANS = {
-    "single": {
-        "price": 99,
-        "credits": 1,
-        "alert_tier": "free",
-        "description": "1 Tender Analysis",
-        "expiry_days": None
-    },
-    "pack": {
-        "price": 399,
-        "credits": 5,
-        "alert_tier": "basic",
-        "description": "5 Tender Pack",
-        "expiry_days": 60
-    },
-    "monthly": {
-        "price": 799,
-        "credits": 30, # Soft limit
-        "alert_tier": "full",
-        "description": "Monthly Unlimited",
-        "expiry_days": 30
-    }
-}
-
-def format_inr(amount: int) -> str:
-    """Formats amount in Indian style: 50,00,000 → ₹50 Lakhs"""
-    if amount >= 10000000:
-        return f"₹{amount / 10000000:.1f} Crores"
-    elif amount >= 100000:
-        return f"₹{amount / 100000:.1f} Lakhs"
-    elif amount >= 1000:
-        return f"₹{amount / 1000:.0f}K"
-    else:
-        return f"₹{amount}"
-
-def download_twilio_media(media_url: str) -> str:
-    """Downloads media from Twilio to a temporary file."""
-    response = requests.get(media_url, auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN))
-    if response.status_code == 200:
-        fd, temp_path = tempfile.mkstemp(suffix=".pdf")
-        with os.fdopen(fd, 'wb') as f:
-            f.write(response.content)
-        return temp_path
-    raise Exception(f"Failed to download media: {response.status_code}")
+# Twilio variables removed
 
 def detect_language(text: str) -> str:
     """Detects the language of the incoming message and maps to a supported language.

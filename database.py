@@ -24,10 +24,10 @@ Base = declarative_base()
 # --- TABLES ---
 
 class WebhookLog(Base):
-    """Logs all incoming webhooks from Twilio and Razorpay for reliability."""
+    """Logs all incoming webhooks from AiSensy and Razorpay for reliability."""
     __tablename__ = "webhook_logs"
     id = Column(Integer, primary_key=True, index=True)
-    source = Column(String)  # 'twilio' or 'razorpay'
+    source = Column(String)  # 'aisensy' or 'razorpay'
     payload = Column(String) # JSON string
     processed = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)

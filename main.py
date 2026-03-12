@@ -1,13 +1,14 @@
 from fastapi import FastAPI, Request, BackgroundTasks, Depends
-from fastapi.responses import PlainTextResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 import json
 import os
+import httpx
 from pathlib import Path
 
 from database import engine, get_db, Base, Payment, User, WebhookLog
-from bot import handle_incoming_message, send_whatsapp_message, handle_payment_success
+from bot import handle_incoming_message, handle_payment_success
 from payments import verify_webhook_signature
 from utils import PLANS
 
@@ -29,28 +30,47 @@ def health_check():
     return {"status": "healthy"}
 
 @app.post("/webhook")
-async def twilio_webhook(request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """Receives incoming messages/media from Twilio"""
-    form_data = await request.form()
+async def receive_message(request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """Receives incoming messages/media from AiSensy"""
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"status": "error", "message": "Invalid JSON"}, status_code=400)
     
     # Log the webhook for reliability
-    log = WebhookLog(source="twilio", payload=json.dumps(dict(form_data)))
+    log = WebhookLog(source="aisensy", payload=json.dumps(data))
     db.add(log)
     db.commit()
     
-    phone_number = form_data.get("From", "")
-    text = form_data.get("Body", "").strip()
-    media_url = form_data.get("MediaUrl0")  # Exists if PDF sent
+    wa_id = data.get("waId", "")
+    phone = f"+{wa_id}"
+    msg_type = data.get("type", "")
     
-    handle_incoming_message(phone_number, text, media_url, db, background_tasks)
+    text = None
+    pdf_bytes = None
+    
+    if msg_type == "text":
+        text = data.get("text", "")
+    
+    elif msg_type == "document":
+        doc_url = data.get("document", {}).get("url")
+        if doc_url:
+            # Download PDF from URL
+            async with httpx.AsyncClient() as client:
+                pdf_response = await client.get(doc_url, timeout=30.0)
+                if pdf_response.status_code == 200:
+                    pdf_bytes = pdf_response.content
+    
+    elif msg_type == "interactive":
+        text = data.get("selectedId", "")
+
+    if text or pdf_bytes:
+        handle_incoming_message(phone, text, pdf_bytes, db, background_tasks)
     
     log.processed = True
     db.commit()
     
-    return PlainTextResponse(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>",
-        media_type="text/xml"
-    )
+    return {"status": "ok"}
 
 @app.post("/payment-webhook")
 async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
@@ -86,7 +106,7 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
                 payment_record = db.query(Payment).filter(
                     Payment.razorpay_order_id == razorpay_order_id
                 ).first()
-
+                
                 if not payment_record:
                     # Fallback to user phone + status if order_id is missing or different
                     payment_record = db.query(Payment).filter(
