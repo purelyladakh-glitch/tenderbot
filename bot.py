@@ -43,40 +43,40 @@ def send_whatsapp_message(to_number: str, body: str, media_url: str = None):
 
 def send_interactive_buttons(to_number: str, body: str, buttons: list, content_sid: str = None):
     """
-    Send a WhatsApp message with Quick Reply buttons via AiSensy.
-    Falls back to formatted text with numbered options.
+    Send a WhatsApp message with Quick Reply buttons via Meta Cloud API.
     """
-    # Fallback: formatted text with button labels
-    btn_text = "\n".join([f"👉 *{b['title']}*" for b in buttons])
-    fallback_msg = f"{body}\n\n{btn_text}"
-    send_whatsapp_message(to_number, fallback_msg)
+    import asyncio
+    try:
+        asyncio.run(whatsapp.send_interactive_buttons(to_number, body, buttons))
+    except Exception as e:
+        print(f"Error sending buttons to {to_number}: {e}")
+        # Fallback to text
+        btn_text = "\n".join([f"👉 *{b['title']}*" for b in buttons])
+        fallback_msg = f"{body}\n\n{btn_text}"
+        send_whatsapp_message(to_number, fallback_msg)
 
 
 def send_interactive_list(to_number: str, body: str, button_text: str, sections: list, content_sid: str = None):
     """
-    Send a WhatsApp List Message via AiSensy.
-    Falls back to a numbered text menu.
+    Send a WhatsApp List Message via Meta Cloud API.
     """
-    # Fallback: well-formatted numbered menu for text-only interfaces
-    menu_lines = [body, ""]
-    for section in sections:
-        if section.get("title"):
-            menu_lines.append(f"*{section['title']}*")
-        
-        rows = section.get("rows", [])
-        for i, row in enumerate(rows, 1):
-            # Use unicode numbers for 1-10
-            number_circle = [
-                "0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"
-            ]
-            num_prefix = number_circle[i] if i < len(number_circle) else f"{i}."
+    import asyncio
+    try:
+        asyncio.run(whatsapp.send_interactive_list(to_number, body, button_text, sections))
+    except Exception as e:
+        print(f"Error sending list to {to_number}: {e}")
+        # Fallback: well-formatted numbered menu for text-only interfaces
+        menu_lines = [body, ""]
+        for section in sections:
+            if section.get("title"):
+                menu_lines.append(f"*{section['title']}*")
             
-            desc = f" — {row['description']}" if row.get("description") else ""
-            menu_lines.append(f"{num_prefix} *{row['title']}*{desc}")
-        menu_lines.append("")
-        
-    menu_lines.append(f"👉 *{button_text}*")
-    send_whatsapp_message(to_number, "\n".join(menu_lines))
+            rows = section.get("rows", [])
+            for i, row in enumerate(rows, 1):
+                desc = f" — {row['description']}" if row.get("description") else ""
+                menu_lines.append(f"{i}. *{row['title']}*{desc}")
+            menu_lines.append("")
+        send_whatsapp_message(to_number, "\n".join(menu_lines))
 
 
 def send_long_message(phone_number: str, text: str):

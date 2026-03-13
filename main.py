@@ -29,40 +29,70 @@ def read_root():
 def health_check():
     return {"status": "healthy"}
 
+@app.get("/webhook")
+async def verify_meta_webhook(request: Request):
+    """Meta Webhook Verification (Handshake)"""
+    params = request.query_params
+    mode = params.get("hub.mode")
+    token = params.get("hub.verify_token")
+    challenge = params.get("hub.challenge")
+    
+    if mode == "subscribe" and token == os.getenv("WEBHOOK_VERIFY_TOKEN"):
+        print("WEBHOOK_VERIFIED")
+        from fastapi.responses import Response
+        return Response(content=challenge, media_type="text/plain")
+    
+    return JSONResponse({"status": "error", "message": "Verification failed"}, status_code=403)
+
 @app.post("/webhook")
 async def receive_message(request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """Receives incoming messages/media from AiSensy"""
+    """Receives incoming messages/media from Meta WhatsApp Cloud API"""
     try:
         data = await request.json()
     except Exception:
         return JSONResponse({"status": "error", "message": "Invalid JSON"}, status_code=400)
     
     # Log the webhook for reliability
-    log = WebhookLog(source="aisensy", payload=json.dumps(data))
+    log = WebhookLog(source="meta", payload=json.dumps(data))
     db.add(log)
     db.commit()
+
+    # Meta webhook payload structure is nested: entry[] -> changes[] -> value
+    # We check if this is a message status update or an actual message
+    entry = data.get("entry", [{}])[0]
+    changes = entry.get("changes", [{}])[0]
+    value = changes.get("value", {})
     
-    wa_id = data.get("waId", "")
+    if "messages" not in value:
+        # Likely a status update (delivered, read, etc.)
+        return {"status": "ok", "detail": "not a message"}
+
+    message = value.get("messages", [{}])[0]
+    wa_id = message.get("from")
     phone = f"+{wa_id}"
-    msg_type = data.get("type", "")
+    msg_type = message.get("type")
     
     text = None
     pdf_bytes = None
-    
+    from whatsapp import get_media_url, download_media
+
     if msg_type == "text":
-        text = data.get("text", "")
+        text = message.get("text", {}).get("body")
     
     elif msg_type == "document":
-        doc_url = data.get("document", {}).get("url")
-        if doc_url:
-            # Download PDF from URL
-            async with httpx.AsyncClient() as client:
-                pdf_response = await client.get(doc_url, timeout=30.0)
-                if pdf_response.status_code == 200:
-                    pdf_bytes = pdf_response.content
+        doc = message.get("document", {})
+        if doc.get("mime_type") == "application/pdf":
+            media_id = doc.get("id")
+            media_url = await get_media_url(media_id)
+            if media_url:
+                pdf_bytes = await download_media(media_url)
     
     elif msg_type == "interactive":
-        text = data.get("selectedId", "")
+        interactive = message.get("interactive", {})
+        if interactive.get("type") == "button_reply":
+            text = interactive.get("button_reply", {}).get("id")
+        elif interactive.get("type") == "list_reply":
+            text = interactive.get("list_reply", {}).get("id")
 
     if text or pdf_bytes:
         handle_incoming_message(phone, text, pdf_bytes, db, background_tasks)
