@@ -27,7 +27,8 @@ class WebhookLog(Base):
     """Logs all incoming webhooks from AiSensy and Razorpay for reliability."""
     __tablename__ = "webhook_logs"
     id = Column(Integer, primary_key=True, index=True)
-    source = Column(String)  # 'aisensy' or 'razorpay'
+    source = Column(String)  # 'meta' or 'razorpay'
+    message_id = Column(String, index=True, nullable=True) # Unique ID from provider
     payload = Column(String) # JSON string
     processed = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)

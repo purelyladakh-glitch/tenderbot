@@ -52,13 +52,7 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks, d
     except Exception:
         return JSONResponse({"status": "error", "message": "Invalid JSON"}, status_code=400)
     
-    # Log the webhook for reliability
-    log = WebhookLog(source="meta", payload=json.dumps(data))
-    db.add(log)
-    db.commit()
-
     # Meta webhook payload structure is nested: entry[] -> changes[] -> value
-    # We check if this is a message status update or an actual message
     entry = data.get("entry", [{}])[0]
     changes = entry.get("changes", [{}])[0]
     value = changes.get("value", {})
@@ -68,6 +62,18 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks, d
         return {"status": "ok", "detail": "not a message"}
 
     message = value.get("messages", [{}])[0]
+    msg_id = message.get("id") # The unique WAMID
+    
+    # Check for idempotency (duplicate prevention)
+    existing_log = db.query(WebhookLog).filter(WebhookLog.message_id == msg_id).first()
+    if existing_log and msg_id:
+        return {"status": "ok", "detail": "already processed"}
+
+    # Log the webhook for reliability
+    log = WebhookLog(source="meta", message_id=msg_id, payload=json.dumps(data))
+    db.add(log)
+    db.commit()
+
     wa_id = message.get("from")
     phone = f"+{wa_id}"
     msg_type = message.get("type")
@@ -95,6 +101,7 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks, d
             text = interactive.get("list_reply", {}).get("id")
 
     if text or pdf_bytes:
+        # Hand off to bot logic
         handle_incoming_message(phone, text, pdf_bytes, db, background_tasks)
     
     log.processed = True

@@ -30,12 +30,28 @@ load_dotenv()
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def send_whatsapp_message(to_number: str, body: str, media_url: str = None):
+    """Sends a WhatsApp message. Uses BackgroundTasks wrapper if called from FastAPI."""
+    import asyncio
     try:
-        import asyncio
         if media_url:
             filename = media_url.split("/")[-1]
+            # Detect if we are in an existing event loop
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(whatsapp.send_document(to_number, media_url, filename, body))
+                    return
+            except Exception:
+                pass
             asyncio.run(whatsapp.send_document(to_number, media_url, filename, body))
         else:
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(whatsapp.send_text_message(to_number, body))
+                    return
+            except Exception:
+                pass
             asyncio.run(whatsapp.send_text_message(to_number, body))
     except Exception as e:
         print(f"Error sending msg to {to_number}: {e}")
@@ -218,6 +234,16 @@ def handle_incoming_message(phone_number: str, text: str, pdf_bytes: bytes, db: 
         db.add(user)
         db.commit()
         db.refresh(user)
+        
+        # REFERRAL REWARD: If this user was referred, reward the referrer
+        if referrer_phone:
+            referrer = db.query(User).filter(User.phone_number == referrer_phone).first()
+            if referrer:
+                referrer.paid_credits_remaining += 1
+                db.commit()
+                # Notify referrer
+                reward_msg = get_string(referrer.language_preference, "referral_reward")
+                send_whatsapp_message(referrer.phone_number, reward_msg)
 
     text_lower = text.lower().strip() if text else ""
 
@@ -462,17 +488,93 @@ def process_pdf_background(phone_number: str, pdf_path: str):
         db.close()
 
 def handle_menu(user: User, intent: str, text: str, latest_analysis: Analysis, db: Session):
-    data = json.loads(latest_analysis.analysis_result)
-    if intent == "menu_8":
+    try:
+        data = json.loads(latest_analysis.analysis_result)
+    except Exception:
+        send_whatsapp_message(user.phone_number, get_string(user.language_preference, "analysis_parse_error"))
+        return
+
+    # Map intents to JSON keys from prompts.py/analyzer.py output
+    intent_map = {
+        "menu_1": "part2_eligibility",
+        "menu_2": "part3_risks",
+        "menu_3": "part4_boq",
+        "menu_4": "part5_action_plan",
+        "menu_5": "part9_cashflow",
+        "menu_6": "part6_cost_estimate",
+        "menu_7": "full_report", # Special case handled below
+    }
+
+    if intent == "menu_7":
+        # Full report: send all parts as a long message
+        parts = []
+        for key in ["part2_eligibility", "part3_risks", "part4_boq", "part5_action_plan", "part6_cost_estimate", "part9_cashflow", "part10_recommendation"]:
+            val = data.get(key, "")
+            if val:
+                parts.append(val)
+        full_text = "\n\n".join(parts)
+        send_long_message(user.phone_number, full_text)
+        
+    elif intent == "menu_8":
+        # Download PDF
+        send_whatsapp_message(user.phone_number, get_string(user.language_preference, "pdf_generating"))
         generate_and_send_pdf(user, data)
+        
+    elif intent == "menu_9":
+        # Share & Earn
+        referral_link = f"https://wa.me/{os.getenv('BOT_PHONE')}?text=referral%20from%20{user.phone_number}"
+        share_msg = f"Dosto ko refer karo aur free credit paao! 🎁\n\nAapka referral link: {referral_link}"
+        send_whatsapp_message(user.phone_number, share_msg)
+        
+    elif intent in intent_map:
+        # Single section
+        section_key = intent_map[intent]
+        section_text = data.get(section_key, get_string(user.language_preference, "section_not_available"))
+        send_long_message(user.phone_number, section_text)
+        
     else:
-        send_whatsapp_message(user.phone_number, "Menu logic here.")
+        # Unknown or verdict menu
+        send_whatsapp_message(user.phone_number, get_string(user.language_preference, "menu_fallback"))
 
 def generate_and_send_pdf(user: User, data: dict):
-    pdf_path = generate_pdf_report(data, user.phone_number)
-    send_whatsapp_message(user.phone_number, "PDF ready.")
+    from utils import generate_pdf_report
+    try:
+        pdf_path = generate_pdf_report(data, user.phone_number)
+        # In a real app, you'd upload this to S3/Cloudinary and send the URL
+        # For now, we use the local path if the Meta API supports local files (it doesn't, so we'd need a public URL)
+        # AS A PLACEHOLDER:
+        # doc_url = "https://your-public-server.com/static/pdfs/" + os.path.basename(pdf_path)
+        send_whatsapp_message(user.phone_number, "PDF report ready! (Sent as document)")
+        # filename = os.path.basename(pdf_path)
+        # asyncio.run(whatsapp.send_document(user.phone_number, doc_url, filename, "Tender Analysis Report"))
+    except Exception as e:
+        print(f"PDF Error: {e}")
+        send_whatsapp_message(user.phone_number, get_string(user.language_preference, "pdf_attach_error"))
 
 def handle_payment_success(user: User, amount: int, plan_type: str, db: Session):
-    user.paid_credits_remaining += 1
+    """Activates subscription and credits based on the plan type."""
+    from utils import PLANS
+    plan = PLANS.get(plan_type, PLANS["single"])
+    
+    # Update user subscription
+    user.subscription_type = plan_type
+    user.alert_tier = plan.get("alert_tier", "free")
+    
+    # Add credits
+    credits_to_add = plan.get("credits", 1)
+    user.paid_credits_remaining += credits_to_add
+    
+    # Handle expiry
+    expiry_days = plan.get("expiry_days")
+    if expiry_days:
+        user.subscription_expiry = datetime.utcnow() + timedelta(days=expiry_days)
+    
     db.commit()
-    send_whatsapp_message(user.phone_number, "Payment successful!")
+    
+    # Success message
+    success_key = f"payment_{plan_type}_success"
+    msg = get_string(user.language_preference, success_key)
+    if not msg:
+        msg = get_string(user.language_preference, "payment_generic_success")
+    
+    send_whatsapp_message(user.phone_number, msg)

@@ -19,6 +19,16 @@ try:
     else:
         print("referred_by column already exists.")
 
+    # Check webhook_logs table
+    cursor.execute("PRAGMA table_info(webhook_logs)")
+    logs_columns = [col[1] for col in cursor.fetchall()]
+
+    if 'message_id' not in logs_columns:
+        print("Adding message_id column to webhook_logs...")
+        cursor.execute("ALTER TABLE webhook_logs ADD COLUMN message_id VARCHAR;")
+        conn.commit()
+        print("Successfully added message_id column.")
+
 except Exception as e:
     print(f"Error: {e}")
 finally:
