@@ -436,7 +436,22 @@ def handle_search(user: User, text: str, db: Session):
 
 def handle_new_pdf(user: User, pdf_bytes: bytes, db: Session, background_tasks):
     if not (user.free_analyses_used < 1 or user.paid_credits_remaining > 0):
-        handle_buy(user, "buy_single", db)
+        from payments import generate_payment_link
+        from utils import PLANS
+        
+        link_99 = generate_payment_link(PLANS["single"]["price"], user.phone_number, "UPGRADE_99", "Single Analysis")
+        msg = get_string(user.language_preference, "payment_options_prompt").format(link_99=link_99)
+        
+        sections = [{ "title": "Upgrade Plans", "rows": [
+            {"id": "buy_1", "title": "1. Single Analysis", "description": "₹99"},
+            {"id": "buy_2", "title": "2. 5 Report Pack", "description": "₹399"},
+            {"id": "buy_3", "title": "3. Monthly Pro", "description": "₹799"},
+        ]}]
+        
+        user.conversation_state = "awaiting_payment_choice"
+        db.commit()
+        
+        send_interactive_list(user.phone_number, msg, "View Plans", sections)
         return
 
     user.conversation_state = "analyzing"
@@ -478,7 +493,36 @@ def process_pdf_background(phone_number: str, pdf_path: str):
         db.add(new_analysis)
         db.commit()
 
-        send_whatsapp_message(phone_number, "Analysis complete! Check the menu.")
+        # Proactive Analysis Verdict & Menu
+        from strings import build_menu
+        
+        # 1. Format Verdict Header
+        verdict_msg = get_string(user.language_preference, "verdict_header").format(
+            department=analysis_json.get("department", "Tender"),
+            work=analysis_json.get("work_description", "General Work")[:50] + "...",
+            value=format_inr(analysis_json.get("estimated_value", 0)),
+            deadline=analysis_json.get("deadline", "N/A"),
+            days=analysis_json.get("days_to_deadline", "N/A"),
+            verdict=analysis_json.get("bid_verdict", "Unknown"),
+            score=analysis_json.get("bid_score", 0),
+            critical=len(analysis_json.get("critical_risks", [])),
+            warnings=len(analysis_json.get("warnings", [])),
+            bid=format_inr(analysis_json.get("recommended_bid", 0)),
+            profit=format_inr(analysis_json.get("estimated_profit", 0))
+        )
+        
+        # 2. Get Analysis Menu
+        menu_msg = get_string(user.language_preference, "verdict_menu")
+        full_msg = f"{verdict_msg}\n{menu_msg}"
+        
+        # 3. Add Low-Credit Nudge if needed
+        if user.paid_credits_remaining < 2 and user.subscription_type != "monthly":
+            nudge = get_string(user.language_preference, "upgrade_nudge_low_credits").format(credits=user.paid_credits_remaining)
+            full_msg += f"\n\n💡 {nudge}"
+        
+        # Send everything at once
+        send_whatsapp_message(phone_number, full_msg)
+
         if os.path.exists(pdf_path):
             os.remove(pdf_path)
 
@@ -530,7 +574,12 @@ def handle_menu(user: User, intent: str, text: str, latest_analysis: Analysis, d
         # Single section
         section_key = intent_map[intent]
         section_text = data.get(section_key, get_string(user.language_preference, "section_not_available"))
-        send_long_message(user.phone_number, section_text)
+        
+        # Add a subtle "Share & Earn" nudge at the end of every detailed section
+        referral_link = f"https://wa.me/{os.getenv('BOT_PHONE')}?text=referral%20from%20{user.phone_number}"
+        nudge = f"\n\n🎁 *Tip:* Share TenderBot with a friend and get +1 Free Credit!\n{referral_link}"
+        
+        send_long_message(user.phone_number, section_text + nudge)
         
     else:
         # Unknown or verdict menu
