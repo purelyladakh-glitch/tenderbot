@@ -8,7 +8,7 @@ Updated: March 2026
 """
 
 def get_live_market_data() -> str:
-    return \"\"\"
+    return """
 [LIVE MARKET RATES - INDIA CONTEXT (March 2026)]
 - Cement: ₹350 - ₹420 per 50kg bag (OPC/PPC)
 - TMT Steel Rebar: ₹52,000 - ₹58,000 per Metric Tonne
@@ -34,4 +34,4 @@ def get_live_market_data() -> str:
   - Increase transport costs by 30-40%
   - Restrict working season to May-October (6 months)
   - Apply 20-30% premium on labour due to scarcity
-\"\"\"
+"""
