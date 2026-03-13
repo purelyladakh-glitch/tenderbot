@@ -6,6 +6,7 @@ import json
 import os
 import httpx
 from pathlib import Path
+import sentry_sdk
 
 from database import engine, get_db, Base, Payment, User, WebhookLog
 from bot import handle_incoming_message, handle_payment_success
@@ -16,6 +17,36 @@ from utils import PLANS
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="TenderBot")
+
+# Optional Sentry Monitoring for Error Tracking
+if os.getenv("SENTRY_DSN"):
+    sentry_sdk.init(
+        dsn=os.getenv("SENTRY_DSN"),
+        traces_sample_rate=1.0,
+        profiles_sample_rate=1.0,
+    )
+
+@app.on_event("startup")
+async def startup_event():
+    print("🚀 TenderBot API starting up...")
+    token = os.getenv("META_ACCESS_TOKEN", "")
+    if token.startswith("EAA") and len(token) < 250:
+        print("⚠️ WARNING: META_ACCESS_TOKEN may be temporary.")
+        print("⚠️ Generate a permanent System User token. See README for instructions.")
+        
+    try:
+        from database import SessionLocal
+        db = SessionLocal()
+        db.execute("SELECT 1")
+        print("✅ Database connection verified.")
+        db.close()
+    except Exception as e:
+        print(f"❌ CRITICAL DATABASE ERROR ON STARTUP: {e}")
+        
+@app.on_event("shutdown")
+async def shutdown_event():
+    print("🛑 TenderBot API gracefully shutting down...")
+
 
 # Ensure static directory exists for serving PDFs
 Path("static/pdfs").mkdir(parents=True, exist_ok=True)
@@ -37,7 +68,7 @@ async def verify_meta_webhook(request: Request):
     token = params.get("hub.verify_token")
     challenge = params.get("hub.challenge")
     
-    if mode == "subscribe" and token == os.getenv("WEBHOOK_VERIFY_TOKEN"):
+    if mode == "subscribe" and token == os.getenv("META_WEBHOOK_VERIFY_TOKEN"):
         print("WEBHOOK_VERIFIED")
         from fastapi.responses import Response
         return Response(content=challenge, media_type="text/plain")
@@ -99,6 +130,20 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks, d
             text = interactive.get("button_reply", {}).get("id")
         elif interactive.get("type") == "list_reply":
             text = interactive.get("list_reply", {}).get("id")
+
+    elif msg_type in ["image", "audio", "video"]:
+        send_whatsapp_message(phone, "Sorry, I can only analyze PDF documents. Please send a tender PDF.")
+        log.processed = True
+        db.commit()
+        return {"status": "ok", "detail": "unsupported media type"}
+        
+    elif msg_type in ["location", "sticker", "reaction", "contacts", "button"]:
+        # Gracefully ignore or respond simply
+        if msg_type not in ["reaction", "status"]:
+            send_whatsapp_message(phone, "I didn't understand that. Please send a tender PDF or type 'Menu'.")
+        log.processed = True
+        db.commit()
+        return {"status": "ok", "detail": "ignored type"}
 
     if text or pdf_bytes:
         # Hand off to bot logic

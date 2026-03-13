@@ -5,7 +5,7 @@ AI-powered WhatsApp bot for Indian government contractors. Send a tender PDF →
 ## Features
 
 - ✅ **9-part Tender Analysis** via Google Gemini 3 Flash
-- ✅ **WhatsApp Interface** via AiSensy
+- ✅ **WhatsApp Interface** via Meta Cloud API
 - ✅ **Natural Language** — Hindi, English, Hinglish, regional languages
 - ✅ **All India Coverage** — 28 states, 8 UTs, 20+ central portals
 - ✅ **Ladakh Special Focus** — BRO, NHIDCL, LAHDC, MES tracking
@@ -19,7 +19,7 @@ AI-powered WhatsApp bot for Indian government contractors. Send a tender PDF →
 
 - Python 3.11 / FastAPI / Uvicorn
 - Google Gemini 3 Flash Preview (AI analysis)
-- AiSensy WhatsApp API
+- Meta Cloud API
 - Razorpay (payments)
 - SQLite + SQLAlchemy (database)
 - Railway.app (deployment)
@@ -54,8 +54,10 @@ AI-powered WhatsApp bot for Indian government contractors. Send a tender PDF →
 
 ```
 GEMINI_API_KEY=
-AISENSY_API_KEY=
-AISENSY_PHONE=
+META_ACCESS_TOKEN=
+META_PHONE_NUMBER_ID=
+META_WEBHOOK_VERIFY_TOKEN=TenderBot2026Secret
+META_API_VERSION=v18.0
 RAZORPAY_KEY_ID=
 RAZORPAY_KEY_SECRET=
 RAILWAY_URL=https://your-app.up.railway.app
@@ -69,8 +71,39 @@ PORT=8000
 2. Connect repo to Railway
 3. Add env variables in Railway dashboard
 4. Railway auto-deploys
-5. Set AiSensy (Pro) webhook: `https://your-domain/receive_message`
+5. Set Meta Webhook URL: `https://your-domain/webhook` with `TenderBot2026Secret`
 6. Set Razorpay webhook: `https://your-domain/payment-webhook`
+
+## CRITICAL: Getting Permanent Access Token
+
+The `META_ACCESS_TOKEN` provided by the quickstart is a temporary 24-hour token.
+**To get a token that NEVER expires:**
+1. Go to business.facebook.com -> Settings -> Users -> System Users
+2. Click "Add System User"
+3. Name: `TenderBot-Bot`, Role: `Admin`
+4. Click "Generate New Token"
+5. Select your TenderBot app
+6. Select these permissions:
+   - `whatsapp_business_messaging`
+   - `whatsapp_business_management`
+   - `business_management`
+7. Click "Generate Token" and copy it immediately.
+8. Add this token to Railway as `META_ACCESS_TOKEN`.
+
+## How to submit templates in Meta Business Manager
+
+Meta requires pre-approved templates for proactive messages (alerts, reminders).
+1. Go to WhatsApp Manager -> Message Templates
+2. Click "Create Template" -> Select "Utility"
+3. Replicate the names and exact placeholders `{{1}}` found in `template_manager.py`.
+4. Submit for review.
+
+## API Key Rotation without Downtime
+
+To maintain security, rotate keys periodically:
+1. **Gemini API**: Generate a new key in Google AI Studio. Update `GEMINI_API_KEY` in Railway dashboard. Railway will gracefully restart the service. Delete the old key.
+2. **Meta Access Token**: Generate a new System User Token in Business Manager. Update `META_ACCESS_TOKEN` in Railway. Delete old token.
+3. **Razorpay**: Roll keys in the Razorpay dashboard (creates a new active key while keeping the old one active for 24h). Update Railway. Deactivate old key after 24 hours.
 
 ## Phase 2 — Automated Scraping (Not Yet Active)
 

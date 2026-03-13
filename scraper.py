@@ -2,7 +2,7 @@
 TenderBot — Background Scraper Worker
 Runs independently of the FastAPI web server.
 Pulls live tenders from government portals, matches them against
-ContractorPreference records, and sends WhatsApp alerts via AiSensy.
+ContractorPreference records, and sends WhatsApp alerts via Meta Cloud API.
 
 Deploy on Railway as a separate "Worker" service:
   python scraper.py
@@ -12,7 +12,7 @@ import os
 import re
 import time
 import json
-import schedule
+from apscheduler.schedulers.blocking import BlockingScheduler
 import urllib3
 from datetime import datetime
 from dotenv import load_dotenv
@@ -393,26 +393,32 @@ def match_and_alert():
                 if not user:
                     continue
 
-                # Format value display
-                value_display = ""
-                if t["value_inr"] > 0:
-                    if t["value_inr"] >= 10000000:
-                        value_display = f"₹{t['value_inr']/10000000:.1f} Cr"
-                    elif t["value_inr"] >= 100000:
-                        value_display = f"₹{t['value_inr']/100000:.1f} Lakh"
-                    else:
-                        value_display = f"₹{t['value_inr']:,}"
+                from portals import format_free_alert, format_pack_alert, format_monthly_alert, format_ladakh_alert
+                
+                tender_data = {
+                    "department": record.department,
+                    "work_description": record.title,
+                    "location": record.state,
+                    "value": record.value_inr,
+                    "deadline_date": record.closing_date_raw,
+                    "days_remaining": "Coming Soon"
+                }
 
-                value_line = f"\n💰 Est. Value: {value_display}" if value_display else ""
-
-                alert_msg = (
-                    f"🔔 *New Tender Alert!*\n\n"
-                    f"📌 {record.title}\n"
-                    f"🏢 {record.department}\n"
-                    f"📍 {record.state}{value_line}\n\n"
-                    f"🔗 {record.url}\n\n"
-                    f"Reply *'Analyze this'* to get a full AI report!"
-                )
+                # Tiered Alert Formatting + Ladakh Focus
+                is_ladakh = any(kw in record.state.lower() for kw in ["ladakh", "leh", "kargil"])
+                tier = user.alert_tier or "free"
+                
+                if is_ladakh:
+                    alert_msg = format_ladakh_alert(tender_data, user.paid_credits_remaining)
+                elif tier == "full":
+                    alert_msg = format_monthly_alert(tender_data)
+                elif tier == "basic":
+                    alert_msg = format_pack_alert(tender_data, user.paid_credits_remaining)
+                else:
+                    alert_msg = format_free_alert(tender_data)
+                
+                # Append URL directly for immediate access
+                alert_msg += f"\n\n🔗 *Link:* {record.url}"
 
                 send_whatsapp_message(user.phone_number, alert_msg)
                 alert_count += 1
@@ -557,6 +563,41 @@ def check_deadlines_and_remind():
         db.close()
 
 
+def check_subscription_expiry_and_remind():
+    """
+    Checks if any paid subscriptions are expiring in 3 days or 1 day
+    and sends a renewal notice to the user over WhatsApp.
+    """
+    print("\n💳 Checking for expiring subscriptions...")
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        today = now.date()
+        
+        # Get users with active subscriptions
+        expiring_users = db.query(User).filter(User.subscription_expiry != None).all()
+        remind_count = 0
+        
+        for user in expiring_users:
+            days_left = (user.subscription_expiry.date() - today).days
+            
+            if days_left in [3, 1]:
+                lang = user.language_preference
+                if lang == "hi":
+                    msg = f"⏰ आपका TenderBot plan {days_left} दिन में expire होगा।\\nसेवा जारी रखने के लिए Type करें: *Renew*"
+                else:
+                    msg = f"⏰ Your TenderBot subscription expires in {days_left} days!\\nReply *Renew* to keep your active alerts and analysis."
+                
+                send_whatsapp_message(user.phone_number, msg)
+                remind_count += 1
+                print(f"  → Sent {days_left}d expiry warning to {user.phone_number}")
+                
+        print(f"✅ Subscription check complete: {remind_count} notices sent.")
+    except Exception as e:
+        print(f"❌ Subscription check error: {e}")
+    finally:
+        db.close()
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # SCHEDULER
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -568,21 +609,27 @@ def run_scraper_schedule():
     print(f"   Schedule: Every 6 hours")
     print("━" * 60)
 
-    # Run once immediately on boot
-    match_and_alert()
+    # APScheduler configuration
+    scheduler = BlockingScheduler()
     
-    # Run deadline check once on boot
+    # Run once immediately on boot
+    print("⏳ Running initial fetch loop...")
+    match_and_alert()
     check_deadlines_and_remind()
+    check_subscription_expiry_and_remind()
 
     # Schedule: Every 6 hours for scraping
-    schedule.every(6).hours.do(match_and_alert)
+    scheduler.add_job(match_and_alert, 'interval', hours=6, name='Scrape Tenders')
 
-    # Schedule: Every morning at 7am for reminders
-    schedule.every().day.at("07:00").do(check_deadlines_and_remind)
+    # Schedule: Every morning at 7am and 8am for reminders
+    scheduler.add_job(check_deadlines_and_remind, 'cron', hour=7, minute=0, name='Deadline Reminders')
+    scheduler.add_job(check_subscription_expiry_and_remind, 'cron', hour=8, minute=0, name='Subscription Expiry Check')
 
-    while True:
-        schedule.run_pending()
-        time.sleep(60)
+    print("🚀 Scheduler active and running...")
+    try:
+        scheduler.start()
+    except (KeyboardInterrupt, SystemExit):
+        pass
 
 
 if __name__ == "__main__":

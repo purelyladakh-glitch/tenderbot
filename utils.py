@@ -115,7 +115,5 @@ def generate_pdf_report(analysis_json: dict, phone_number: str) -> str:
         pdf.multi_cell(0, 6, txt=safe_text(content))
         pdf.ln(5)
 
-    fd, temp_path = tempfile.mkstemp(suffix=".pdf")
-    os.close(fd)
-    pdf.output(temp_path)
-    return temp_path
+    # Return in-memory bytes
+    return bytes(pdf.output())

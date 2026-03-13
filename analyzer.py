@@ -8,6 +8,7 @@ from pdf2image import convert_from_path
 from PIL import Image
 from dotenv import load_dotenv
 from prompts import TENDER_ANALYSIS_PROMPT
+from live_data import get_live_market_data
 
 load_dotenv()
 
@@ -27,7 +28,7 @@ generation_config = {
 model = genai.GenerativeModel(
     model_name=MODEL_NAME,
     generation_config=generation_config,
-    system_instruction=TENDER_ANALYSIS_PROMPT
+    system_instruction=TENDER_ANALYSIS_PROMPT + "\n\n" + get_live_market_data()
 )
 
 def is_pdf_too_large(file_path: str, max_size_mb: int = 50) -> bool:
@@ -71,6 +72,53 @@ def extract_text_from_pdf(file_path: str) -> str:
 
     return all_text # Return whatever we have (even if tiny)
 
+def self_review(result_json: dict) -> dict:
+    """
+    Self-Review Agent:
+    Validates the AI's output, checks for missing parts, calculation errors,
+    and contradictions. Injects warnings if unfixable.
+    """
+    warnings = result_json.get("warnings", [])
+    
+    # Check all 9 parts exist
+    required_parts = [
+        "part1_summary", "part2_eligibility", "part3_risks", 
+        "part4_boq", "part5_action_plan", "part6_cost_estimate",
+        "part7_competitor", "part8_subcontractors", "part9_cashflow",
+        "part10_recommendation"
+    ]
+    
+    for part in required_parts:
+        if part not in result_json or not str(result_json[part]).strip():
+            result_json[part] = "⚠️ Information not found or analysis incomplete for this section."
+            warnings.append(f"Missing {part}")
+
+    # Check basic calculations
+    try:
+        val = int(result_json.get("value", 0))
+        rec_bid = int(result_json.get("recommended_bid", 0))
+        profit = int(result_json.get("estimated_profit", 0))
+        
+        # If profit > 50% of value, it's highly unrealistic
+        if profit > (val * 0.5) and val > 0:
+            warnings.append("Profit estimate seems unrealistically high (>50%).")
+            result_json["part6_cost_estimate"] += "\n⚠️ Reviewer Note: Initial project cost estimates heavily underestimate expenses."
+            
+        # If recommended bid is way higher than value
+        if rec_bid > (val * 1.5) and val > 0:
+             warnings.append("Recommended bid is >50% higher than tender value. Likely to be rejected.")
+             
+        # Dates valid check
+        days = int(result_json.get("days_remaining", 0))
+        if days < 0:
+             warnings.append("Tender deadline has already passed.")
+             
+    except Exception as e:
+        print(f"Self-review calculation check failed: {e}")
+        
+    result_json["warnings"] = warnings
+    return result_json
+
 def analyze_tender_document(file_path: str, language: str) -> dict:
     """
     Analyzes the PDF. 
@@ -104,7 +152,10 @@ def analyze_tender_document(file_path: str, language: str) -> dict:
             result_json = json.loads(response.text)
             if "quick_verdict_score" not in result_json:
                 raise ValueError("Incomplete analysis result")
-            return result_json
+                
+            # Run Self-Review Agent
+            reviewed_json = self_review(result_json)
+            return reviewed_json
 
         except Exception as e:
             print(f"Analysis attempt {attempt+1} failed: {e}")

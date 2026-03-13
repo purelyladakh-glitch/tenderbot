@@ -26,16 +26,15 @@ from portals import (
 load_dotenv()
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# MESSAGING — via AiSensy
+# MESSAGING — via Meta
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def send_whatsapp_message(to_number: str, body: str, media_url: str = None):
     """Sends a WhatsApp message. Uses BackgroundTasks wrapper if called from FastAPI."""
     import asyncio
     try:
-        if media_url:
+        if media_url: # Keeping media_url param for legacy link-based sends if needed
             filename = media_url.split("/")[-1]
-            # Detect if we are in an existing event loop
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
@@ -177,6 +176,7 @@ def detect_intent(text: str) -> str:
     if matchesAny(["subcontract", "thekedar", "dusra"]): return "menu_subcontractor"
     if matchesAny(["sumary", "summary", "kya hai", "short"]): return "menu_summary"
     if matchesAny(["bid", "lena", "chahiye", "skip", "verdict"]): return "menu_verdict"
+    if matchesAny(["later", "kal", "baad", "remind me", "tomm", "tomorrow"]): return "menu_later"
 
     if matchesAny(["plan", "price", "pricing", "upgrade", "subscrib", "kitne ka", "rate", "paisa", "payment"]): return "show_plans"
     if matchesAny(["99", "single", "ek", "one"]): return "buy_single"
@@ -236,14 +236,17 @@ def handle_incoming_message(phone_number: str, text: str, pdf_bytes: bytes, db: 
         db.refresh(user)
         
         # REFERRAL REWARD: If this user was referred, reward the referrer
-        if referrer_phone:
+        if referrer_phone and referrer_phone != phone_number:
             referrer = db.query(User).filter(User.phone_number == referrer_phone).first()
             if referrer:
-                referrer.paid_credits_remaining += 1
-                db.commit()
-                # Notify referrer
-                reward_msg = get_string(referrer.language_preference, "referral_reward")
-                send_whatsapp_message(referrer.phone_number, reward_msg)
+                # Anti-Abuse: Max 20 referral credits per user
+                referral_count = db.query(User).filter(User.referred_by == referrer_phone).count()
+                if referral_count <= 20:
+                    referrer.paid_credits_remaining += 1
+                    db.commit()
+                    # Notify referrer
+                    reward_msg = f"🎉 Mubarak ho! Aapke link se ek naye user ne join kiya hai.\n🎁 Aapko mila hai +1 FREE Tender Analysis Credit!\n\nCredits remaining: {referrer.paid_credits_remaining}"
+                    send_whatsapp_message(referrer.phone_number, reward_msg)
 
     text_lower = text.lower().strip() if text else ""
 
@@ -264,13 +267,19 @@ def handle_incoming_message(phone_number: str, text: str, pdf_bytes: bytes, db: 
             user.language_preference = "mr"
         elif text_lower in ["5", "gujarati", "gu"]:
             user.language_preference = "gu"
+        elif text_lower in ["6", "tamil", "ta"]:
+            user.language_preference = "ta"
+        elif text_lower in ["7", "telugu", "te"]:
+            user.language_preference = "te"
         else:
             welcome_msg = get_string("hinglish", "welcome_new")
             sections = [{"title": "Select Language", "rows": [
                 {"id": "en", "title": "1. English", "description": "English"},
                 {"id": "hi", "title": "2. Hindi", "description": "हिंदी"},
                 {"id": "hinglish", "title": "3. Hinglish", "description": "Default"},
-                {"id": "mr", "title": "4. Marathi", "description": "मराठी"}
+                {"id": "mr", "title": "4. Marathi", "description": "मराठी"},
+                {"id": "ta", "title": "5. Tamil", "description": "தமிழ்"},
+                {"id": "te", "title": "6. Telugu", "description": "తెలుగు"}
             ]}]
             send_interactive_list(user.phone_number, welcome_msg, "Select Language", sections)
             return
@@ -388,6 +397,8 @@ def change_language_request(user: User, db: Session):
         {"id": "en", "title": "1. English", "description": "English"},
         {"id": "hi", "title": "2. Hindi", "description": "हिंदी"},
         {"id": "hinglish", "title": "3. Hinglish", "description": "Default"},
+        {"id": "ta", "title": "4. Tamil", "description": "தமிழ்"},
+        {"id": "te", "title": "5. Telugu", "description": "తెలుగు"}
     ]}]
     send_interactive_list(user.phone_number, msg, "Select Language", sections)
 
@@ -528,6 +539,10 @@ def process_pdf_background(phone_number: str, pdf_path: str):
 
     except Exception as e:
         print(f"Error: {e}")
+        if user:
+            user.conversation_state = "ready"
+            db.commit()
+            send_whatsapp_message(phone_number, get_string(user.language_preference, "error_gemini_failed"))
     finally:
         db.close()
 
@@ -587,18 +602,24 @@ def handle_menu(user: User, intent: str, text: str, latest_analysis: Analysis, d
 
 def generate_and_send_pdf(user: User, data: dict):
     from utils import generate_pdf_report
+    import asyncio
+    import whatsapp
     try:
-        pdf_path = generate_pdf_report(data, user.phone_number)
-        # In a real app, you'd upload this to S3/Cloudinary and send the URL
-        # For now, we use the local path if the Meta API supports local files (it doesn't, so we'd need a public URL)
-        # AS A PLACEHOLDER:
-        # doc_url = "https://your-public-server.com/static/pdfs/" + os.path.basename(pdf_path)
-        send_whatsapp_message(user.phone_number, "PDF report ready! (Sent as document)")
-        # filename = os.path.basename(pdf_path)
-        # asyncio.run(whatsapp.send_document(user.phone_number, doc_url, filename, "Tender Analysis Report"))
+        # Generate raw bytes instead of a local file
+        pdf_bytes = generate_pdf_report(data, user.phone_number)
+        filename = f"Tender_Analysis_{data.get('tender_number', 'Report')}.pdf"
+        
+        # Notify user it's generating
+        send_whatsapp_message(user.phone_number, "⏳ Generating your PDF report...")
+        
+        # Upload bytes directly to Meta
+        media_id = asyncio.run(whatsapp.upload_media(pdf_bytes, "application/pdf", filename))
+        
+        # Send using the media ID
+        asyncio.run(whatsapp.send_document(user.phone_number, media_id, filename, "Tender Analysis Report", is_id=True))
     except Exception as e:
-        print(f"PDF Error: {e}")
-        send_whatsapp_message(user.phone_number, get_string(user.language_preference, "pdf_attach_error"))
+        print(f"PDF Output Error: {e}")
+        send_whatsapp_message(user.phone_number, get_string(user.language_preference, "error_generic"))
 
 def handle_payment_success(user: User, amount: int, plan_type: str, db: Session):
     """Activates subscription and credits based on the plan type."""
