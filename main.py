@@ -60,6 +60,65 @@ def read_root():
 def health_check():
     return {"status": "healthy"}
 
+@app.get("/privacy")
+async def privacy_policy():
+    """Returns a simple HTML privacy policy page for TenderBot."""
+    from fastapi.responses import HTMLResponse
+    html_content = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Privacy Policy - TenderBot</title>
+        <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 40px 20px; background-color: #f9f9f9; }
+            .container { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+            h1 { color: #1a73e8; border-bottom: 2px solid #eef2f7; padding-bottom: 10px; margin-top: 0; }
+            h2 { color: #2c3e50; margin-top: 30px; }
+            p, ul { color: #555; }
+            .footer { margin-top: 50px; font-size: 0.9em; color: #888; text-align: center; }
+            .highlight { color: #1a73e8; font-weight: 600; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Privacy Policy for TenderBot</h1>
+            <p>Last updated: March 2026</p>
+            
+            <p>At <span class="highlight">TenderBot</span>, your privacy is our priority. This policy explains how we handle your information.</p>
+
+            <h2>1. What Data We Collect</h2>
+            <ul>
+                <li><strong>Phone Number:</strong> We collect your WhatsApp phone number to identify you and send analysis results.</li>
+                <li><strong>Tender PDFs:</strong> We temporarily process the tender documents you send to perform AI analysis.</li>
+                <li><strong>Usage Data:</strong> We track the number of analyses performed and your subscription status.</li>
+            </ul>
+
+            <h2>2. How We Use Your Data</h2>
+            <p>We use the collected information solely to:</p>
+            <ul>
+                <li>Provide accurate 9-part tender analysis.</li>
+                <li>Manage your subscription and credits.</li>
+                <li>Communicate with you via WhatsApp regarding your requests.</li>
+            </ul>
+
+            <h2>3. Data Protection & Sharing</h2>
+            <p>We do <span class="highlight">NOT sell or share</span> your personal data or tender documents with third parties. Your data is used exclusively to power the bot's features.</p>
+
+            <h2>4. Contact Us</h2>
+            <p>If you have any questions or concerns about your data, please contact us at:</p>
+            <p class="highlight">purelyladakh@gmail.com</p>
+
+            <div class="footer">
+                &copy; 2026 TenderBot - All Rights Reserved.
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
+
 @app.get("/webhook")
 async def verify_meta_webhook(request: Request):
     """Meta Webhook Verification (Handshake)"""
