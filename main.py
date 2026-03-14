@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 import json
 import os
 import httpx
@@ -37,7 +38,7 @@ async def startup_event():
     try:
         from database import SessionLocal
         db = SessionLocal()
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         print("✅ Database connection verified.")
         db.close()
     except Exception as e:
