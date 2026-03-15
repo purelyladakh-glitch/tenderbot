@@ -17,8 +17,8 @@ load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key)
 
-# Use the latest Gemini 3.1 Flash model as of March 2026
-MODEL_NAME = "gemini-3.1-flash"
+# Use the latest stable Gemini Flash model alias
+MODEL_NAME = "gemini-flash-latest"
 
 print(f"✅ Gemini client initialized with model: {MODEL_NAME}")
 
