@@ -1,50 +1,43 @@
-import sqlite3
-import os
+from sqlalchemy import text, inspect
+from database import engine
+import logging
 
-db_path = os.path.join(os.path.dirname(__file__), 'tenderbot.db')
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-try:
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+def run_migrations():
+    """Checks for missing columns and applies ALTER TABLE statements."""
+    inspector = inspect(engine)
     
-    # Check if column exists first
-    cursor.execute("PRAGMA table_info(users)")
-    columns = [col[1] for col in cursor.fetchall()]
-    
-    if 'referred_by' not in columns:
-        print("Adding referred_by column to users table...")
-        cursor.execute("ALTER TABLE users ADD COLUMN referred_by VARCHAR;")
-        conn.commit()
-    
-    if 'subscription_expiry' not in columns:
-        print("Adding subscription_expiry column to users table...")
-        cursor.execute("ALTER TABLE users ADD COLUMN subscription_expiry DATETIME;")
-        conn.commit()
-
-    # Check webhook_logs table
-    cursor.execute("PRAGMA table_info(webhook_logs)")
-    logs_columns = [col[1] for col in cursor.fetchall()]
-
-    if 'message_id' not in logs_columns:
-        print("Adding message_id column to webhook_logs...")
-        cursor.execute("ALTER TABLE webhook_logs ADD COLUMN message_id VARCHAR;")
-        conn.commit()
-
-    # Check analyses table
-    try:
-        cursor.execute("PRAGMA table_info(analyses)")
-        analyses_columns = [col[1] for col in cursor.fetchall()]
-        if 'deadline_date' not in analyses_columns:
-            print("Adding deadline_date to analyses...")
-            cursor.execute("ALTER TABLE analyses ADD COLUMN deadline_date DATETIME;")
+    with engine.connect() as conn:
+        # 1. Check users table
+        columns = [col['name'] for col in inspector.get_columns('users')]
+        if 'referred_by' not in columns:
+            logger.info("Adding referred_by column to users table...")
+            conn.execute(text("ALTER TABLE users ADD COLUMN referred_by VARCHAR;"))
             conn.commit()
-    except Exception:
-        pass
-        
-    print("Database migration complete.")
+            
+        if 'subscription_expiry' not in columns:
+            logger.info("Adding subscription_expiry column to users table...")
+            conn.execute(text("ALTER TABLE users ADD COLUMN subscription_expiry TIMESTAMP;"))
+            conn.commit()
 
-except Exception as e:
-    print(f"Error: {e}")
-finally:
-    if 'conn' in locals():
-        conn.close()
+        # 2. Check webhook_logs table
+        columns = [col['name'] for col in inspector.get_columns('webhook_logs')]
+        if 'message_id' not in columns:
+            logger.info("Adding message_id column to webhook_logs...")
+            conn.execute(text("ALTER TABLE webhook_logs ADD COLUMN message_id VARCHAR;"))
+            conn.commit()
+
+        # 3. Check analyses table
+        columns = [col['name'] for col in inspector.get_columns('analyses')]
+        if 'deadline_date' not in columns:
+            logger.info("Adding deadline_date to analyses...")
+            conn.execute(text("ALTER TABLE analyses ADD COLUMN deadline_date TIMESTAMP;"))
+            conn.commit()
+
+        logger.info("Database migration check complete.")
+
+if __name__ == "__main__":
+    run_migrations()

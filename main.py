@@ -9,13 +9,14 @@ import httpx
 from pathlib import Path
 import sentry_sdk
 
-from database import engine, get_db, Base, Payment, User, WebhookLog
+from database import get_db, init_db, User, ContractorPreference, Analysis, Payment, WebhookLog
+from migrate_db import run_migrations
 from bot import handle_incoming_message, handle_payment_success
 from payments import verify_webhook_signature
 from utils import PLANS
 
 # Create all tables in sqlite DB automatically
-Base.metadata.create_all(bind=engine)
+# Base.metadata.create_all(bind=engine) # This line is removed as init_db() will handle it
 
 app = FastAPI(title="TenderBot")
 
@@ -29,6 +30,9 @@ if os.getenv("SENTRY_DSN"):
 
 @app.on_event("startup")
 async def startup_event():
+    # Initialize database tables and run migrations for existing tables
+    init_db()
+    run_migrations()
     print("🚀 TenderBot API starting up...")
     token = os.getenv("META_ACCESS_TOKEN", "")
     if token.startswith("EAA") and len(token) < 250:
@@ -137,7 +141,6 @@ async def verify_meta_webhook(request: Request):
 
 @app.post("/webhook")
 async def receive_webhook(request: Request, db: Session = Depends(get_db), background_tasks: BackgroundTasks = BackgroundTasks()):
-    print("📥 Incoming Webhook Request received...")
     """Receives incoming messages/media from Meta WhatsApp Cloud API"""
     try:
         data = await request.json()
