@@ -34,8 +34,28 @@ async def startup_event():
     init_db()
     run_migrations()
     print("🚀 TenderBot API starting up...")
-    token = os.getenv("META_ACCESS_TOKEN", "")
-    if token.startswith("EAA") and len(token) < 250:
+    
+    # --- CONNECTIVITY AUDIT LOGS ---
+    print("🔍 --- CONNECTIVITY AUDIT ---")
+    
+    meta_token = os.getenv("META_ACCESS_TOKEN", "")
+    whatsapp_token = os.getenv("WHATSAPP_TOKEN", "")
+    phone_id = os.getenv("META_PHONE_NUMBER_ID", "")
+    verify_token_meta = os.getenv("META_WEBHOOK_VERIFY_TOKEN", "")
+    verify_token_generic = os.getenv("WEBHOOK_VERIFY_TOKEN", "")
+    
+    print(f"META_ACCESS_TOKEN: {meta_token[:10]}..." if meta_token else "META_ACCESS_TOKEN: MISSING")
+    print(f"WHATSAPP_TOKEN: {whatsapp_token[:10]}..." if whatsapp_token else "WHATSAPP_TOKEN: MISSING")
+    print(f"META_PHONE_NUMBER_ID: {phone_id}" if phone_id else "META_PHONE_NUMBER_ID: MISSING")
+    print(f"META_WEBHOOK_VERIFY_TOKEN: {verify_token_meta}" if verify_token_meta else "META_WEBHOOK_VERIFY_TOKEN: MISSING")
+    print(f"WEBHOOK_VERIFY_TOKEN: {verify_token_generic}" if verify_token_generic else "WEBHOOK_VERIFY_TOKEN: MISSING")
+    
+    print("Webhook URL: /webhook")
+    print(f"Verify token configured: {'YES' if verify_token_meta or verify_token_generic else 'NO'}")
+    print(f"Phone Number ID: {phone_id}")
+    print("🔍 ---------------------------")
+
+    if meta_token.startswith("EAA") and len(meta_token) < 250:
         print("⚠️ WARNING: META_ACCESS_TOKEN may be temporary.")
         print("⚠️ Generate a permanent System User token. See README for instructions.")
         

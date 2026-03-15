@@ -9,6 +9,8 @@ META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
 META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID")
 META_API_VERSION = os.getenv("META_API_VERSION", "v22.0")
 API_URL = f"https://graph.facebook.com/{META_API_VERSION}/{META_PHONE_NUMBER_ID}/messages"
+print(f"WhatsApp API URL configured: {API_URL}")
+print(f"WhatsApp token length: {len(META_ACCESS_TOKEN) if META_ACCESS_TOKEN else 0}")
 
 async def send_text_message(to: str, text: str):
     """Send plain text message via Meta Cloud API"""
