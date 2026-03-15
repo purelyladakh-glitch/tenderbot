@@ -136,7 +136,8 @@ async def verify_meta_webhook(request: Request):
     return JSONResponse({"status": "error", "message": "Verification failed"}, status_code=403)
 
 @app.post("/webhook")
-async def receive_message(request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def receive_webhook(request: Request, db: Session = Depends(get_db), background_tasks: BackgroundTasks = BackgroundTasks()):
+    print("📥 Incoming Webhook Request received...")
     """Receives incoming messages/media from Meta WhatsApp Cloud API"""
     try:
         data = await request.json()
