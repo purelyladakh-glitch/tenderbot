@@ -1,7 +1,8 @@
 import os
 import json
 import time
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import pdfplumber
 import pytesseract
 from pdf2image import convert_from_path
@@ -12,24 +13,14 @@ from live_data import get_live_market_data
 
 load_dotenv()
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+# Initialize the Gemini Client
+api_key = os.getenv("GEMINI_API_KEY")
+client = genai.Client(api_key=api_key)
 
-# Use gemini-3-flash-preview as per the prompt requirements
-MODEL_NAME = "gemini-3-flash-preview"
+# Use the latest Gemini 3.1 Flash model as of March 2026
+MODEL_NAME = "gemini-3.1-flash"
 
-generation_config = {
-    "temperature": 0.2,
-    "top_p": 0.95,
-    "top_k": 64,
-    "max_output_tokens": 8192,
-    "response_mime_type": "application/json"
-}
-
-model = genai.GenerativeModel(
-    model_name=MODEL_NAME,
-    generation_config=generation_config,
-    system_instruction=TENDER_ANALYSIS_PROMPT + "\n\n" + get_live_market_data()
-)
+print(f"✅ Gemini client initialized with model: {MODEL_NAME}")
 
 def is_pdf_too_large(file_path: str, max_size_mb: int = 50) -> bool:
     size_mb = os.path.getsize(file_path) / (1024 * 1024)
@@ -60,7 +51,7 @@ def extract_text_from_pdf(file_path: str) -> str:
         images = convert_from_path(file_path)
         ocr_text = ""
         for i, image in enumerate(images):
-            # Limit OCR to first 15 pages for performance for now
+            # Limit OCR to first 15 pages for performance
             if i >= 15: break 
             page_text = pytesseract.image_to_string(image)
             ocr_text += page_text + "\n"
@@ -70,11 +61,10 @@ def extract_text_from_pdf(file_path: str) -> str:
     except Exception as e:
         print(f"OCR failed: {e}")
 
-    return all_text # Return whatever we have (even if tiny)
+    return all_text # Return whatever we have
 
 def self_review(result_json: dict) -> dict:
     """
-    Self-Review Agent:
     Validates the AI's output, checks for missing parts, calculation errors,
     and contradictions. Injects warnings if unfixable.
     """
@@ -99,16 +89,13 @@ def self_review(result_json: dict) -> dict:
         rec_bid = int(result_json.get("recommended_bid", 0))
         profit = int(result_json.get("estimated_profit", 0))
         
-        # If profit > 50% of value, it's highly unrealistic
         if profit > (val * 0.5) and val > 0:
             warnings.append("Profit estimate seems unrealistically high (>50%).")
             result_json["part6_cost_estimate"] += "\n⚠️ Reviewer Note: Initial project cost estimates heavily underestimate expenses."
             
-        # If recommended bid is way higher than value
         if rec_bid > (val * 1.5) and val > 0:
              warnings.append("Recommended bid is >50% higher than tender value. Likely to be rejected.")
              
-        # Dates valid check
         days = int(result_json.get("days_remaining", 0))
         if days < 0:
              warnings.append("Tender deadline has already passed.")
@@ -121,39 +108,56 @@ def self_review(result_json: dict) -> dict:
 
 def analyze_tender_document(file_path: str, language: str) -> dict:
     """
-    Analyzes the PDF. 
-    1. Tries direct PDF upload to Gemini.
-    2. If that fails or text is sparse, uses local OCR and sends text.
+    Analyzes the PDF document using the new google-genai SDK.
     """
     # Step 1: Extract text locally to check if it's scanned
     extracted_text = extract_text_from_pdf(file_path)
-    is_scanned = len(extracted_text.split()) < 100 # Or whatever threshold we used
+    is_scanned = len(extracted_text.split()) < 100
+
+    gen_config = types.GenerateContentConfig(
+        temperature=0.2,
+        top_p=0.95,
+        top_k=64,
+        max_output_tokens=8192,
+        response_mime_type="application/json",
+        system_instruction=TENDER_ANALYSIS_PROMPT + "\n\n" + get_live_market_data()
+    )
 
     retries = 2
     for attempt in range(retries):
         try:
             if is_scanned and len(extracted_text.split()) > 10:
-                # Scanned PDF: Send the OCR'd text directly
+                # Scanned PDF: Send OCR text
                 prompt = (
                     f"Analyze this tender document text (extracted via OCR). "
                     f"The response MUST be formatted predominantly in {language}.\n\n"
                     f"DOCUMENT TEXT:\n{extracted_text}"
                 )
-                response = model.generate_content(prompt)
+                response = client.models.generate_content(
+                    model=MODEL_NAME, 
+                    contents=prompt,
+                    config=gen_config
+                )
             else:
-                # Searchable PDF: Upload file to Gemini
-                uploaded_file = genai.upload_file(path=file_path, mime_type="application/pdf")
-                time.sleep(2)
+                # Searchable PDF: Upload to Gemini Files API
+                uploaded_file = client.files.upload(path=file_path)
+                # Wait for file to be ready (though usually tiny ones are instant)
+                while uploaded_file.state.name == "PROCESSING":
+                    time.sleep(1)
+                    uploaded_file = client.files.get(name=uploaded_file.name)
+                
                 prompt = f"Please analyze this tender document. The response MUST be formatted predominantly in {language}."
-                response = model.generate_content([uploaded_file, prompt])
-                genai.delete_file(uploaded_file.name)
+                response = client.models.generate_content(
+                    model=MODEL_NAME,
+                    contents=[uploaded_file, prompt],
+                    config=gen_config
+                )
+                client.files.delete(name=uploaded_file.name)
             
             # Parse response
-            result_json = json.loads(response.text)
-            if "quick_verdict_score" not in result_json:
-                raise ValueError("Incomplete analysis result")
-                
-            # Run Self-Review Agent
+            result_json = response.parsed if hasattr(response, 'parsed') else json.loads(response.text)
+            
+            # Run Self-Review
             reviewed_json = self_review(result_json)
             return reviewed_json
 
@@ -161,30 +165,13 @@ def analyze_tender_document(file_path: str, language: str) -> dict:
             print(f"Analysis attempt {attempt+1} failed: {e}")
             time.sleep(2)
             if attempt == retries - 1:
-                # If everything failed, and it was a tiny file, maybe notify bot.py
                 if len(extracted_text.split()) < 20:
                     return {"error": "OCR_FAILED_TINY"}
                 raise e
 
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# QUICK TENDER SUMMARY (for scraper auto-analysis)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-# Lightweight model for quick summaries (no PDF upload needed)
-quick_model = genai.GenerativeModel(
-    model_name=MODEL_NAME,
-    generation_config={
-        "temperature": 0.3,
-        "max_output_tokens": 500,
-    },
-)
-
 def quick_tender_summary(title: str, department: str, state: str, value: float) -> str:
     """
-    Generates a short AI summary of a tender from metadata only (no PDF).
-    Used by the scraper for ₹799 Monthly Pro auto-analysis alerts.
-    Returns a concise WhatsApp-friendly summary string.
+    Generates a quick summary for the scraper.
     """
     value_display = ""
     if value and value > 0:
@@ -213,7 +200,14 @@ Your analysis must include:
 Keep each bullet to ONE line. Use emojis. Be direct and practical."""
 
     try:
-        response = quick_model.generate_content(prompt)
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.3,
+                max_output_tokens=500,
+            )
+        )
         return response.text.strip()
     except Exception as e:
         print(f"Quick summary error: {e}")
