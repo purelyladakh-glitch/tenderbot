@@ -164,7 +164,9 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db), backg
     """Receives incoming messages/media from Meta WhatsApp Cloud API"""
     try:
         data = await request.json()
-    except Exception:
+        print(f"📥 Received Webhook JSON: {json.dumps(data)}")
+    except Exception as e:
+        print(f"❌ Webhook JSON Parse Error: {e}")
         return JSONResponse({"status": "error", "message": "Invalid JSON"}, status_code=400)
     
     # Meta webhook payload structure is nested: entry[] -> changes[] -> value

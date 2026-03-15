@@ -28,6 +28,7 @@ async def send_text_message(to: str, text: str):
     
     async with httpx.AsyncClient() as client:
         response = await client.post(API_URL, headers=headers, json=payload, timeout=10.0)
+        print(f"📡 Meta API Response [Status {response.status_code}]: {response.text}")
         return response.json()
 
 async def upload_media(file_bytes: bytes, mime_type: str, filename: str) -> str:

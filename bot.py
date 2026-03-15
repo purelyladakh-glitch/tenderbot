@@ -53,7 +53,9 @@ def send_whatsapp_message(to_number: str, body: str, media_url: str = None):
                 pass
             asyncio.run(whatsapp.send_text_message(to_number, body))
     except Exception as e:
-        print(f"Error sending msg to {to_number}: {e}")
+        print(f"❌ CRITICAL Error sending msg to {to_number}: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def send_interactive_buttons(to_number: str, body: str, buttons: list, content_sid: str = None):
