@@ -25,15 +25,17 @@ async def send_text_message(to: str, text: str):
         "type": "text",
         "text": {"body": text},
     }
-    
+    print(f"DEBUG: Sending text to {to}: {text[:50]}...")
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(API_URL, headers=headers, json=payload, timeout=10.0)
-            print(f"WhatsApp API response: {response.status_code}")
-            print(f"WhatsApp API error: {response.text}")
+            print(f"WhatsApp API Response Status: {response.status_code}")
+            print(f"WhatsApp API Response Body: {response.text}")
+            if response.status_code >= 400:
+                print(f"❌ FAILED to send text to {to}. Payload: {json.dumps(payload)}")
             return response.json()
     except Exception as e:
-        print(f"❌ Error sending WhatsApp message: {str(e)}")
+        print(f"❌ EXCEPTION sending WhatsApp message to {to}: {str(e)}")
         return {"error": str(e)}
 
 async def upload_media(file_bytes: bytes, mime_type: str, filename: str) -> str:
@@ -81,15 +83,17 @@ async def send_document(to: str, doc_url_or_id: str, filename: str, caption: str
         "type": "document",
         "document": document_obj,
     }
-    
+    print(f"DEBUG: Sending document to {to}: {filename}")
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(API_URL, headers=headers, json=payload, timeout=10.0)
-            print(f"WhatsApp API response: {response.status_code}")
-            print(f"WhatsApp API error: {response.text}")
+            print(f"WhatsApp API Response Status: {response.status_code}")
+            print(f"WhatsApp API Response Body: {response.text}")
+            if response.status_code >= 400:
+                print(f"❌ FAILED to send document to {to}. Payload: {json.dumps(payload)}")
             return response.json()
     except Exception as e:
-        print(f"❌ Error sending WhatsApp document: {str(e)}")
+        print(f"❌ EXCEPTION sending WhatsApp document to {to}: {str(e)}")
         return {"error": str(e)}
 
 async def send_interactive_buttons(to: str, body: str, buttons: list):
@@ -123,15 +127,17 @@ async def send_interactive_buttons(to: str, body: str, buttons: list):
             }
         }
     }
-    
+    print(f"DEBUG: Sending interactive buttons to {to}")
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(API_URL, headers=headers, json=payload, timeout=10.0)
-            print(f"WhatsApp API response: {response.status_code}")
-            print(f"WhatsApp API error: {response.text}")
+            print(f"WhatsApp API Response Status: {response.status_code}")
+            print(f"WhatsApp API Response Body: {response.text}")
+            if response.status_code >= 400:
+                print(f"❌ FAILED to send buttons to {to}. Payload: {json.dumps(payload)}")
             return response.json()
     except Exception as e:
-        print(f"❌ Error sending interactive buttons: {str(e)}")
+        print(f"❌ EXCEPTION sending interactive buttons to {to}: {str(e)}")
         return {"error": str(e)}
 
 async def send_interactive_list(to: str, body: str, button_text: str, sections: list):
@@ -170,15 +176,17 @@ async def send_interactive_list(to: str, body: str, button_text: str, sections: 
             }
         }
     }
-    
+    print(f"DEBUG: Sending interactive list to {to}")
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(API_URL, headers=headers, json=payload, timeout=10.0)
-            print(f"WhatsApp API response: {response.status_code}")
-            print(f"WhatsApp API error: {response.text}")
+            print(f"WhatsApp API Response Status: {response.status_code}")
+            print(f"WhatsApp API Response Body: {response.text}")
+            if response.status_code >= 400:
+                print(f"❌ FAILED to send list to {to}. Payload: {json.dumps(payload)}")
             return response.json()
     except Exception as e:
-        print(f"❌ Error sending interactive list: {str(e)}")
+        print(f"❌ EXCEPTION sending interactive list to {to}: {str(e)}")
         return {"error": str(e)}
 
 async def get_media_url(media_id: str):
