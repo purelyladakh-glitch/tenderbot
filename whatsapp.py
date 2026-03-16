@@ -26,10 +26,15 @@ async def send_text_message(to: str, text: str):
         "text": {"body": text},
     }
     
-    async with httpx.AsyncClient() as client:
-        response = await client.post(API_URL, headers=headers, json=payload, timeout=10.0)
-        print(f"📡 Meta API Response [Status {response.status_code}]: {response.text}")
-        return response.json()
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(API_URL, headers=headers, json=payload, timeout=10.0)
+            print(f"WhatsApp API response: {response.status_code}")
+            print(f"WhatsApp API error: {response.text}")
+            return response.json()
+    except Exception as e:
+        print(f"❌ Error sending WhatsApp message: {str(e)}")
+        return {"error": str(e)}
 
 async def upload_media(file_bytes: bytes, mime_type: str, filename: str) -> str:
     """Uploads media direct to Meta and returns the media_id"""
@@ -77,9 +82,15 @@ async def send_document(to: str, doc_url_or_id: str, filename: str, caption: str
         "document": document_obj,
     }
     
-    async with httpx.AsyncClient() as client:
-        response = await client.post(API_URL, headers=headers, json=payload, timeout=10.0)
-        return response.json()
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(API_URL, headers=headers, json=payload, timeout=10.0)
+            print(f"WhatsApp API response: {response.status_code}")
+            print(f"WhatsApp API error: {response.text}")
+            return response.json()
+    except Exception as e:
+        print(f"❌ Error sending WhatsApp document: {str(e)}")
+        return {"error": str(e)}
 
 async def send_interactive_buttons(to: str, body: str, buttons: list):
     """Send interactive buttons via Meta Cloud API"""
@@ -113,9 +124,15 @@ async def send_interactive_buttons(to: str, body: str, buttons: list):
         }
     }
     
-    async with httpx.AsyncClient() as client:
-        response = await client.post(API_URL, headers=headers, json=payload, timeout=10.0)
-        return response.json()
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(API_URL, headers=headers, json=payload, timeout=10.0)
+            print(f"WhatsApp API response: {response.status_code}")
+            print(f"WhatsApp API error: {response.text}")
+            return response.json()
+    except Exception as e:
+        print(f"❌ Error sending interactive buttons: {str(e)}")
+        return {"error": str(e)}
 
 async def send_interactive_list(to: str, body: str, button_text: str, sections: list):
     """Send interactive list via Meta Cloud API"""
@@ -154,9 +171,15 @@ async def send_interactive_list(to: str, body: str, button_text: str, sections: 
         }
     }
     
-    async with httpx.AsyncClient() as client:
-        response = await client.post(API_URL, headers=headers, json=payload, timeout=10.0)
-        return response.json()
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(API_URL, headers=headers, json=payload, timeout=10.0)
+            print(f"WhatsApp API response: {response.status_code}")
+            print(f"WhatsApp API error: {response.text}")
+            return response.json()
+    except Exception as e:
+        print(f"❌ Error sending interactive list: {str(e)}")
+        return {"error": str(e)}
 
 async def get_media_url(media_id: str):
     """Retrieve media URL from Meta media ID"""
