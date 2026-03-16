@@ -25,12 +25,12 @@ async def send_text_message(to: str, text: str):
         "type": "text",
         "text": {"body": text},
     }
-    print(f"DEBUG: Sending text to {to}: {text[:50]}...")
+    print(f"Sending to: {to}")
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(API_URL, headers=headers, json=payload, timeout=10.0)
-            print(f"WhatsApp API Response Status: {response.status_code}")
-            print(f"WhatsApp API Response Body: {response.text}")
+            print(f"API Response: {response.status_code}")
+            print(f"API Body: {response.text}")
             if response.status_code >= 400:
                 print(f"❌ FAILED to send text to {to}. Payload: {json.dumps(payload)}")
             return response.json()
@@ -83,12 +83,12 @@ async def send_document(to: str, doc_url_or_id: str, filename: str, caption: str
         "type": "document",
         "document": document_obj,
     }
-    print(f"DEBUG: Sending document to {to}: {filename}")
+    print(f"Sending to: {to}")
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(API_URL, headers=headers, json=payload, timeout=10.0)
-            print(f"WhatsApp API Response Status: {response.status_code}")
-            print(f"WhatsApp API Response Body: {response.text}")
+            print(f"API Response: {response.status_code}")
+            print(f"API Body: {response.text}")
             if response.status_code >= 400:
                 print(f"❌ FAILED to send document to {to}. Payload: {json.dumps(payload)}")
             return response.json()
@@ -127,12 +127,12 @@ async def send_interactive_buttons(to: str, body: str, buttons: list):
             }
         }
     }
-    print(f"DEBUG: Sending interactive buttons to {to}")
+    print(f"Sending to: {to}")
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(API_URL, headers=headers, json=payload, timeout=10.0)
-            print(f"WhatsApp API Response Status: {response.status_code}")
-            print(f"WhatsApp API Response Body: {response.text}")
+            print(f"API Response: {response.status_code}")
+            print(f"API Body: {response.text}")
             if response.status_code >= 400:
                 print(f"❌ FAILED to send buttons to {to}. Payload: {json.dumps(payload)}")
             return response.json()
@@ -176,12 +176,12 @@ async def send_interactive_list(to: str, body: str, button_text: str, sections: 
             }
         }
     }
-    print(f"DEBUG: Sending interactive list to {to}")
+    print(f"Sending to: {to}")
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(API_URL, headers=headers, json=payload, timeout=10.0)
-            print(f"WhatsApp API Response Status: {response.status_code}")
-            print(f"WhatsApp API Response Body: {response.text}")
+            print(f"API Response: {response.status_code}")
+            print(f"API Body: {response.text}")
             if response.status_code >= 400:
                 print(f"❌ FAILED to send list to {to}. Payload: {json.dumps(payload)}")
             return response.json()
