@@ -7,3 +7,16 @@ __pycache__/
 *.pyc
 venv/
 env/
+.venv/
+simulate_webhook.py
+test_async_fix.py
+test_logic_only.py
+test_meta_api_plus.py
+test_scrape.py
+test_meta_api.py
+live_data.py
+migrate_db.py
+install-pyenv-win.ps1
+*.webp
+*.png
+*.jpg

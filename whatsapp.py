@@ -5,12 +5,21 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
-META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID")
-META_API_VERSION = os.getenv("META_API_VERSION", "v22.0")
+META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "").strip()
+META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID", "").strip()
+META_API_VERSION = os.getenv("META_API_VERSION", "v22.0").strip()
+
+if not META_ACCESS_TOKEN:
+    print("❌ CRITICAL: META_ACCESS_TOKEN is missing!")
+if not META_PHONE_NUMBER_ID:
+    print("❌ CRITICAL: META_PHONE_NUMBER_ID is missing!")
+
 API_URL = f"https://graph.facebook.com/{META_API_VERSION}/{META_PHONE_NUMBER_ID}/messages"
-print(f"WhatsApp API URL configured: {API_URL}")
-print(f"WhatsApp token length: {len(META_ACCESS_TOKEN) if META_ACCESS_TOKEN else 0}")
+
+# Safe logging for debugging
+token_snippet = f"{META_ACCESS_TOKEN[:6]}...{META_ACCESS_TOKEN[-4:]}" if len(META_ACCESS_TOKEN) > 10 else "INVALID/EMPTY"
+print(f"WhatsApp API URL: {API_URL}")
+print(f"WhatsApp Token Snippet: {token_snippet} (Length: {len(META_ACCESS_TOKEN)})")
 
 async def send_text_message(to: str, text: str):
     """Send plain text message via Meta Cloud API"""

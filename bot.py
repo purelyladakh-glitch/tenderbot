@@ -29,42 +29,38 @@ load_dotenv()
 # MESSAGING — via Meta
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def send_whatsapp_message(to_number: str, body: str, media_url: str = None):
-    """Sends a WhatsApp message. Uses BackgroundTasks wrapper if called from FastAPI."""
+def run_async_task(coro):
+    """Helper to run a coroutine, handling existing event loops (e.g. in FastAPI/uvicorn)."""
     import asyncio
     try:
-        if media_url: # Keeping media_url param for legacy link-based sends if needed
-            filename = media_url.split("/")[-1]
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    loop.create_task(whatsapp.send_document(to_number, media_url, filename, body))
-                    return
-            except Exception:
-                pass
-            asyncio.run(whatsapp.send_document(to_number, media_url, filename, body))
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # Already in a running loop (like FastAPI), create a background task
+            return loop.create_task(coro)
         else:
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    loop.create_task(whatsapp.send_text_message(to_number, body))
-                    return
-            except Exception:
-                pass
-            asyncio.run(whatsapp.send_text_message(to_number, body))
+            # Not in a running loop, safe to use asyncio.run
+            return asyncio.run(coro)
+    except RuntimeError:
+        # No loop in this thread, safe to use asyncio.run
+        return asyncio.run(coro)
     except Exception as e:
-        print(f"❌ CRITICAL Error sending msg to {to_number}: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ Error in run_async_task: {e}")
+
+def send_whatsapp_message(to_number: str, body: str, media_url: str = None):
+    """Sends a WhatsApp message. Safe to call from sync or async contexts."""
+    if media_url: 
+        filename = media_url.split("/")[-1]
+        run_async_task(whatsapp.send_document(to_number, media_url, filename, body))
+    else:
+        run_async_task(whatsapp.send_text_message(to_number, body))
 
 
 def send_interactive_buttons(to_number: str, body: str, buttons: list, content_sid: str = None):
     """
     Send a WhatsApp message with Quick Reply buttons via Meta Cloud API.
     """
-    import asyncio
     try:
-        asyncio.run(whatsapp.send_interactive_buttons(to_number, body, buttons))
+        run_async_task(whatsapp.send_interactive_buttons(to_number, body, buttons))
     except Exception as e:
         print(f"Error sending buttons to {to_number}: {e}")
         # Fallback to text
@@ -77,9 +73,8 @@ def send_interactive_list(to_number: str, body: str, button_text: str, sections:
     """
     Send a WhatsApp List Message via Meta Cloud API.
     """
-    import asyncio
     try:
-        asyncio.run(whatsapp.send_interactive_list(to_number, body, button_text, sections))
+        run_async_task(whatsapp.send_interactive_list(to_number, body, button_text, sections))
     except Exception as e:
         print(f"Error sending list to {to_number}: {e}")
         # Fallback: well-formatted numbered menu for text-only interfaces
