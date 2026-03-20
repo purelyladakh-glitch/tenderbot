@@ -92,17 +92,29 @@ def send_interactive_list(to_number: str, body: str, button_text: str, sections:
 
 
 def send_long_message(phone_number: str, text: str):
-    """Splits and sends long messages in chunks."""
+    """Splits and sends long messages in chunks at paragraph boundaries."""
     if not text or text == "N/A":
         send_whatsapp_message(phone_number, get_string("hinglish", "section_not_available"))
         return
-    if len(text) > 1500:
-        chunks = [text[i:i+1500] for i in range(0, len(text), 1500)]
-        for chunk in chunks:
-            send_whatsapp_message(phone_number, chunk)
-            time.sleep(1)
-    else:
+    
+    MAX_LENGTH = 4000
+    if len(text) <= MAX_LENGTH:
         send_whatsapp_message(phone_number, text)
+        return
+    
+    # Split at paragraph boundaries (double newlines)
+    paragraphs = text.split("\n\n")
+    chunk = ""
+    for para in paragraphs:
+        if len(chunk) + len(para) + 2 > MAX_LENGTH:
+            if chunk.strip():
+                send_whatsapp_message(phone_number, chunk.strip())
+                time.sleep(1)
+            chunk = para + "\n\n"
+        else:
+            chunk += para + "\n\n"
+    if chunk.strip():
+        send_whatsapp_message(phone_number, chunk.strip())
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -134,6 +146,13 @@ def get_or_create_preferences(db: Session, phone_number: str) -> ContractorPrefe
         db.commit()
         db.refresh(pref)
     return pref
+
+def generate_referral_link(user_phone: str) -> str:
+    """Generate a WhatsApp deep link with pre-filled referral text."""
+    # Use the actual WhatsApp number, not the phone number ID
+    bot_wa_number = os.getenv("BOT_PHONE", "919796700386")
+    encoded_text = f"referral%20from%20{user_phone}"
+    return f"https://wa.me/{bot_wa_number}?text={encoded_text}"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # INTENT DETECTION
@@ -244,6 +263,22 @@ def handle_incoming_message(phone_number: str, text: str, pdf_bytes: bytes, db: 
                     # Notify referrer
                     reward_msg = f"🎉 Mubarak ho! Aapke link se ek naye user ne join kiya hai.\n🎁 Aapko mila hai +1 FREE Tender Analysis Credit!\n\nCredits remaining: {referrer.paid_credits_remaining}"
                     send_whatsapp_message(referrer.phone_number, reward_msg)
+
+    # Auto-reset stuck states after 10 minutes
+    if user.conversation_state == "analyzing":
+        from datetime import datetime, timedelta
+        # Check if user has been stuck for more than 10 minutes
+        latest_analysis = db.query(Analysis).filter(
+            Analysis.user_phone == user.phone_number
+        ).order_by(Analysis.id.desc()).first()
+        
+        stuck_threshold = datetime.utcnow() - timedelta(minutes=10)
+        if not latest_analysis or latest_analysis.created_at < stuck_threshold:
+            user.conversation_state = "ready"
+            db.commit()
+            send_whatsapp_message(user.phone_number, 
+                "⚠️ Previous analysis timed out. Please try sending your PDF again.")
+            return
 
     text_lower = text.lower().strip() if text else ""
 
@@ -578,7 +613,7 @@ def handle_menu(user: User, intent: str, text: str, latest_analysis: Analysis, d
         
     elif intent == "menu_9":
         # Share & Earn
-        referral_link = f"https://wa.me/{os.getenv('BOT_PHONE')}?text=referral%20from%20{user.phone_number}"
+        referral_link = generate_referral_link(user.phone_number)
         share_msg = f"Dosto ko refer karo aur free credit paao! 🎁\n\nAapka referral link: {referral_link}"
         send_whatsapp_message(user.phone_number, share_msg)
         
@@ -588,7 +623,7 @@ def handle_menu(user: User, intent: str, text: str, latest_analysis: Analysis, d
         section_text = data.get(section_key, get_string(user.language_preference, "section_not_available"))
         
         # Add a subtle "Share & Earn" nudge at the end of every detailed section
-        referral_link = f"https://wa.me/{os.getenv('BOT_PHONE')}?text=referral%20from%20{user.phone_number}"
+        referral_link = generate_referral_link(user.phone_number)
         nudge = f"\n\n🎁 *Tip:* Share TenderBot with a friend and get +1 Free Credit!\n{referral_link}"
         
         send_long_message(user.phone_number, section_text + nudge)

@@ -11,7 +11,7 @@ import sentry_sdk
 
 from database import get_db, init_db, User, ContractorPreference, Analysis, Payment, WebhookLog
 from migrate_db import run_migrations
-from bot import handle_incoming_message, handle_payment_success
+from bot import handle_incoming_message, handle_payment_success, send_whatsapp_message
 from payments import verify_webhook_signature
 from utils import PLANS
 
@@ -54,6 +54,24 @@ async def startup_event():
     print(f"Verify token configured: {'YES' if verify_token_meta or verify_token_generic else 'NO'}")
     print(f"Phone Number ID: {phone_id}")
     print("🔍 ---------------------------")
+
+    import threading
+    import httpx as httpx_sync
+
+    def keep_alive_ping():
+        """Pings the health endpoint every 4 minutes to prevent Railway sleep."""
+        import time as _time
+        port = int(os.environ.get("PORT", 8000))
+        while True:
+            _time.sleep(240)  # 4 minutes
+            try:
+                import urllib.request
+                urllib.request.urlopen(f"http://0.0.0.0:{port}/health", timeout=5)
+            except Exception:
+                pass
+
+    threading.Thread(target=keep_alive_ping, daemon=True).start()
+    print("✅ Keep-alive ping thread started (every 4 minutes)")
 
     if meta_token.startswith("EAA") and len(meta_token) < 250:
         print("⚠️ WARNING: META_ACCESS_TOKEN may be temporary.")
@@ -249,13 +267,24 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
     if not verify_webhook_signature(payload_body, signature):
         return JSONResponse({"status": "error", "message": "Invalid signature"}, status_code=400)
     
+    try:
+        data = json.loads(payload_body)
+    except Exception as e:
+        return JSONResponse({"status": "error", "message": "Invalid JSON"}, status_code=400)
+
+    # Check for duplicate webhook
+    payment_id = data.get("payload", {}).get("payment", {}).get("entity", {}).get("id", "")
+    if payment_id:
+        existing = db.query(WebhookLog).filter(WebhookLog.message_id == payment_id).first()
+        if existing:
+            return JSONResponse({"status": "ok", "detail": "already processed"})
+
     # Log the webhook for reliability
-    log = WebhookLog(source="razorpay", payload=payload_body.decode('utf-8'))
+    log = WebhookLog(source="razorpay", message_id=payment_id, payload=payload_body.decode('utf-8'))
     db.add(log)
     db.commit()
     
     try:
-        data = json.loads(payload_body)
         
         if data.get("event") == "payment.captured":
             payment_entity = data["payload"]["payment"]["entity"]
