@@ -518,7 +518,7 @@ def process_pdf_background(phone_number: str, pdf_path: str):
             send_whatsapp_message(phone_number, get_string(user.language_preference, "pdf_too_large"))
             return
 
-        analysis_json = analyze_tender_document(pdf_path, user.language_preference)
+        analysis_json = analyze_tender_document(pdf_path, user.language_preference, db_session=db)
         
         if user.subscription_type == "free":
             user.free_analyses_used += 1

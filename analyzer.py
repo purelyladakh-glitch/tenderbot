@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import hashlib
 from google import genai
 from google.genai import types
 import pdfplumber
@@ -9,7 +10,7 @@ from pdf2image import convert_from_path
 from PIL import Image
 from dotenv import load_dotenv
 from prompts import TENDER_ANALYSIS_PROMPT
-from live_data import get_live_market_data
+from live_data import get_live_market_data, extract_location_from_text
 
 load_dotenv()
 
@@ -106,13 +107,34 @@ def self_review(result_json: dict) -> dict:
     result_json["warnings"] = warnings
     return result_json
 
-def analyze_tender_document(file_path: str, language: str) -> dict:
-    """
-    Analyzes the PDF document using the new google-genai SDK.
-    """
-    # Step 1: Extract text locally to check if it's scanned
+def analyze_tender_document(file_path: str, language: str, db_session=None) -> dict:
+    """Analyzes the PDF document using the google-genai SDK with two-stage rates."""
+    
     extracted_text = extract_text_from_pdf(file_path)
     is_scanned = len(extracted_text.split()) < 100
+    
+    # Check cache by PDF content hash
+    pdf_hash = None
+    if db_session:
+        try:
+            with open(file_path, 'rb') as f:
+                pdf_hash = hashlib.sha256(f.read()).hexdigest()
+            
+            from database import Analysis
+            cached = db_session.query(Analysis).filter(
+                Analysis.tender_summary == pdf_hash
+            ).first()
+            
+            if cached and cached.analysis_result:
+                print(f"📦 Cache hit for PDF hash: {pdf_hash[:16]}...")
+                return json.loads(cached.analysis_result)
+        except Exception as e:
+            print(f"Cache check failed (non-critical): {e}")
+
+    # Two-stage approach: extract location from text, then fetch location-specific rates
+    tender_location = extract_location_from_text(extracted_text)
+    live_rates = get_live_market_data(location=tender_location, work_type=extracted_text[:200])
+    print(f"📍 Tender location detected: '{tender_location}' — rates fetched for this area")
 
     gen_config = types.GenerateContentConfig(
         temperature=0.2,
@@ -120,7 +142,7 @@ def analyze_tender_document(file_path: str, language: str) -> dict:
         top_k=64,
         max_output_tokens=8192,
         response_mime_type="application/json",
-        system_instruction=TENDER_ANALYSIS_PROMPT + "\n\n" + get_live_market_data()
+        system_instruction=TENDER_ANALYSIS_PROMPT + "\n\n[CURRENT MARKET RATES FOR THIS TENDER'S LOCATION]\n" + live_rates
     )
 
     retries = 2
@@ -159,6 +181,22 @@ def analyze_tender_document(file_path: str, language: str) -> dict:
             
             # Run Self-Review
             reviewed_json = self_review(result_json)
+            
+            # Save to cache if hash available
+            if db_session and pdf_hash:
+                try:
+                    from database import Analysis
+                    new_analysis = Analysis(
+                        user_phone="CACHE", # Marker for shared cache if needed, or just use hash
+                        tender_summary=pdf_hash,
+                        analysis_result=json.dumps(reviewed_json)
+                    )
+                    db_session.add(new_analysis)
+                    db_session.commit()
+                    print(f"💾 Analysis saved to cache for hash: {pdf_hash[:16]}...")
+                except Exception as cache_err:
+                    print(f"Failed to save to cache: {cache_err}")
+                    
             return reviewed_json
 
         except Exception as e:
