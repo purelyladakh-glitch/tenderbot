@@ -346,9 +346,9 @@ def handle_incoming_message(phone_number: str, text: str, pdf_bytes: bytes, db: 
 
     intent = detect_intent(text_lower)
 
-    if text_lower == "plan 1": intent = "buy_single"
-    if text_lower == "plan 2": intent = "buy_pack"
-    if text_lower == "plan 3": intent = "buy_monthly"
+    if text_lower in ("plan 1", "buy_1"): intent = "buy_single"
+    if text_lower in ("plan 2", "buy_2"): intent = "buy_pack"
+    if text_lower in ("plan 3", "buy_3"): intent = "buy_monthly"
 
     if intent == "show_plans":
         show_plans(user, db)
