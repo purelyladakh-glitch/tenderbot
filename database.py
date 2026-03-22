@@ -50,6 +50,7 @@ class User(Base):
     total_analyses_done = Column(Integer, default=0)
     subscription_expiry = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class ContractorPreference(Base):

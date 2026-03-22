@@ -264,21 +264,28 @@ def handle_incoming_message(phone_number: str, text: str, pdf_bytes: bytes, db: 
                     reward_msg = f"🎉 Mubarak ho! Aapke link se ek naye user ne join kiya hai.\n🎁 Aapko mila hai +1 FREE Tender Analysis Credit!\n\nCredits remaining: {referrer.paid_credits_remaining}"
                     send_whatsapp_message(referrer.phone_number, reward_msg)
 
-    # Auto-reset stuck states after 10 minutes
-    if user.conversation_state == "analyzing":
-        from datetime import datetime, timedelta
-        # Check if user has been stuck for more than 10 minutes
-        latest_analysis = db.query(Analysis).filter(
-            Analysis.user_phone == user.phone_number
-        ).order_by(Analysis.id.desc()).first()
+    # Track activity
+    user.updated_at = datetime.utcnow()
+    db.commit()
+
+    # Auto-reset ANY stuck state after 30 minutes
+    stuck_states = ["analyzing", "awaiting_payment_choice", "awaiting_location", 
+                    "awaiting_work_type", "awaiting_value_range", "awaiting_departments",
+                    "awaiting_alert_freq"]
+    if user.conversation_state in stuck_states:
+        # Use a simple time-based check against the latest webhook log
+        latest_log = db.query(WebhookLog).filter(
+            WebhookLog.source == "meta"
+        ).order_by(WebhookLog.id.desc()).first()
         
-        stuck_threshold = datetime.utcnow() - timedelta(minutes=10)
-        if not latest_analysis or latest_analysis.created_at < stuck_threshold:
-            user.conversation_state = "ready"
-            db.commit()
-            send_whatsapp_message(user.phone_number, 
-                "⚠️ Previous analysis timed out. Please try sending your PDF again.")
-            return
+        if latest_log and latest_log.created_at:
+            time_in_state = (datetime.utcnow() - latest_log.created_at).total_seconds()
+            if time_in_state > 1800:  # 30 minutes
+                user.conversation_state = "ready"
+                db.commit()
+                send_whatsapp_message(user.phone_number, 
+                    "⚠️ Session timeout ho gaya. Koi baat nahi — aap phir se shuru kar sakte ho!\n\nType 'Menu' for options.")
+                return
 
     text_lower = text.lower().strip() if text else ""
 
@@ -518,8 +525,31 @@ def process_pdf_background(phone_number: str, pdf_path: str):
             send_whatsapp_message(phone_number, get_string(user.language_preference, "pdf_too_large"))
             return
 
-        analysis_json = analyze_tender_document(pdf_path, user.language_preference, db_session=db)
-        
+        try:
+            analysis_json = analyze_tender_document(pdf_path, user.language_preference, db_session=db)
+            
+            if isinstance(analysis_json, dict) and analysis_json.get("error") == "OCR_FAILED_TINY":
+                user.conversation_state = "ready"
+                db.commit()
+                send_whatsapp_message(user.phone_number, 
+                    "❌ Yeh PDF readable nahi hai — bahut blurry ya empty lag raha hai.\n\n"
+                    "Please ek clear, readable PDF bhejo. Scanned documents bhi chalte hain "
+                    "agar text readable ho.")
+                return
+                
+        except Exception as e:
+            print(f"❌ Analysis failed for {user.phone_number}: {e}")
+            user.conversation_state = "ready"
+            db.commit()
+            send_whatsapp_message(user.phone_number, 
+                "❌ Sorry! Analysis mein error aa gaya.\n\n"
+                "Possible reasons:\n"
+                "• PDF bahut bada hai (max 50MB)\n"
+                "• PDF password protected hai\n"  
+                "• PDF corrupt ya damaged hai\n\n"
+                "Please ek aur baar try karo ya doosra PDF bhejo.")
+            return
+
         if user.subscription_type == "free":
             user.free_analyses_used += 1
         else:
@@ -528,10 +558,22 @@ def process_pdf_background(phone_number: str, pdf_path: str):
         user.total_analyses_done += 1
         user.conversation_state = "menu"
         
+        # Parse deadline from Gemini response
+        deadline_dt = None
+        deadline_str = analysis_json.get("deadline_date", "")
+        if deadline_str and isinstance(deadline_str, str):
+            for fmt in ["%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y"]:
+                try:
+                    deadline_dt = datetime.strptime(deadline_str.strip(), fmt)
+                    break
+                except ValueError:
+                    continue
+
         new_analysis = Analysis(
             user_phone=user.phone_number,
             tender_summary=analysis_json.get("department", "Tender"),
-            analysis_result=json.dumps(analysis_json)
+            analysis_result=json.dumps(analysis_json),
+            deadline_date=deadline_dt
         )
         db.add(new_analysis)
         db.commit()

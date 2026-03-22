@@ -73,6 +73,96 @@ async def startup_event():
     threading.Thread(target=keep_alive_ping, daemon=True).start()
     print("✅ Keep-alive ping thread started (every 4 minutes)")
 
+    # --- Deadline Reminder Scheduler ---
+    def deadline_reminder_loop():
+        """Checks for upcoming tender deadlines and sends reminders every 6 hours."""
+        import time as _time
+        _time.sleep(60)  # Wait 1 minute after startup before first check
+        
+        while True:
+            try:
+                from database import SessionLocal, Analysis, ReminderLog, User
+                import json
+                from datetime import datetime, timedelta
+                
+                db = SessionLocal()
+                now = datetime.utcnow()
+                
+                # Find analyses with upcoming deadlines
+                analyses = db.query(Analysis).filter(
+                    Analysis.deadline_date != None,
+                    Analysis.deadline_date > now,
+                    Analysis.deadline_date < now + timedelta(days=8)
+                ).all()
+                
+                for analysis in analyses:
+                    days_left = (analysis.deadline_date - now).days
+                    
+                    # Determine which reminder to send
+                    reminder_key = None
+                    if days_left == 7:
+                        reminder_key = "7d"
+                    elif days_left == 2:
+                        reminder_key = "2d"
+                    elif days_left == 1:
+                        reminder_key = "1d"
+                    elif days_left == 0:
+                        reminder_key = "0d"
+                    
+                    if not reminder_key:
+                        continue
+                    
+                    # Check if this reminder was already sent
+                    existing = db.query(ReminderLog).filter(
+                        ReminderLog.analysis_id == analysis.id,
+                        ReminderLog.user_phone == analysis.user_phone
+                    ).first()
+                    
+                    if existing:
+                        sent_list = json.loads(existing.reminders_sent or "[]")
+                        if reminder_key in sent_list:
+                            continue
+                        sent_list.append(reminder_key)
+                        existing.reminders_sent = json.dumps(sent_list)
+                    else:
+                        existing = ReminderLog(
+                            user_phone=analysis.user_phone,
+                            tender_id=str(analysis.id),
+                            analysis_id=analysis.id,
+                            deadline=analysis.deadline_date,
+                            reminders_sent=json.dumps([reminder_key])
+                        )
+                        db.add(existing)
+                    
+                    # Send the reminder
+                    result = json.loads(analysis.analysis_result) if analysis.analysis_result else {}
+                    dept = result.get("department", "Unknown")
+                    work = result.get("work_description", "Tender")
+                    
+                    reminder_messages = {
+                        "7d": f"⏰ REMINDER: 7 din baaki!\n\n📋 {dept}\n🔨 {work[:50]}...\n📅 Deadline: {analysis.deadline_date.strftime('%d %b %Y')}\n\nDocuments ready hain? EMD deposit kiya?",
+                        "2d": f"🔴 URGENT: Sirf 2 din baaki!\n\n📋 {dept}\n🔨 {work[:50]}...\n📅 Deadline: {analysis.deadline_date.strftime('%d %b %Y')}\n\nAaj submission complete karo!",
+                        "1d": f"🚨 LAST DAY TOMORROW!\n\n📋 {dept}\n🔨 {work[:50]}...\n📅 Deadline: KAL - {analysis.deadline_date.strftime('%d %b %Y')}\n\nSab kuch ready hai? Final check karo!",
+                        "0d": f"🚨🚨 TODAY IS THE DEADLINE!\n\n📋 {dept}\n🔨 {work[:50]}...\n📅 Deadline: AAJ - {analysis.deadline_date.strftime('%d %b %Y')}\n\nAbhi submit karo! ⏰"
+                    }
+                    
+                    msg = reminder_messages.get(reminder_key, "")
+                    if msg:
+                        from bot import send_whatsapp_message
+                        send_whatsapp_message(analysis.user_phone, msg)
+                        print(f"📨 Sent {reminder_key} reminder to {analysis.user_phone} for analysis #{analysis.id}")
+                    
+                    db.commit()
+                
+                db.close()
+            except Exception as e:
+                print(f"⚠️ Reminder loop error: {e}")
+            
+            _time.sleep(21600)  # Run every 6 hours
+
+    threading.Thread(target=deadline_reminder_loop, daemon=True).start()
+    print("✅ Deadline reminder scheduler started (every 6 hours)")
+
     if meta_token.startswith("EAA") and len(meta_token) < 250:
         print("⚠️ WARNING: META_ACCESS_TOKEN may be temporary.")
         print("⚠️ Generate a permanent System User token. See README for instructions.")
@@ -102,6 +192,48 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+@app.get("/admin/stats")
+async def admin_stats(key: str = "", db: Session = Depends(get_db)):
+    """Simple admin stats dashboard. Protected by a secret key."""
+    admin_key = os.getenv("ADMIN_SECRET_KEY", "tenderbot_admin_2026")
+    if key != admin_key:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    from sqlalchemy import func
+    from datetime import datetime, timedelta
+    
+    total_users = db.query(User).count()
+    active_today = db.query(User).filter(
+        User.created_at > datetime.utcnow() - timedelta(days=1)
+    ).count()
+    total_analyses = db.query(Analysis).count()
+    total_payments = db.query(Payment).filter(Payment.status == "paid").count()
+    total_revenue = db.query(func.sum(Payment.amount)).filter(Payment.status == "paid").scalar() or 0
+    
+    # Recent webhook activity
+    recent_webhooks = db.query(WebhookLog).filter(
+        WebhookLog.created_at > datetime.utcnow() - timedelta(hours=24)
+    ).count()
+    
+    return {
+        "status": "ok",
+        "stats": {
+            "total_users": total_users,
+            "new_users_24h": active_today,
+            "total_analyses": total_analyses,
+            "total_paid_orders": total_payments,
+            "total_revenue_inr": total_revenue,
+            "webhooks_24h": recent_webhooks,
+        },
+        "health": {
+            "database": "connected",
+            "gemini": "configured" if os.getenv("GEMINI_API_KEY") else "missing",
+            "whatsapp": "configured" if os.getenv("META_ACCESS_TOKEN") else "missing",
+            "razorpay": "configured" if os.getenv("RAZORPAY_KEY_ID") else "missing",
+        },
+        "timestamp": datetime.utcnow().isoformat()
+    }
 
 @app.get("/privacy")
 async def privacy_policy():
