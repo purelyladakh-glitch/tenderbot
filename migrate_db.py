@@ -23,6 +23,11 @@ def run_migrations():
             conn.execute(text("ALTER TABLE users ADD COLUMN subscription_expiry TIMESTAMP;"))
             conn.commit()
 
+        if 'updated_at' not in columns:
+            logger.info("Adding updated_at column to users table...")
+            conn.execute(text("ALTER TABLE users ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"))
+            conn.commit()
+
         # 2. Check webhook_logs table
         columns = [col['name'] for col in inspector.get_columns('webhook_logs')]
         if 'message_id' not in columns:
