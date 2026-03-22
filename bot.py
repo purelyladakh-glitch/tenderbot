@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
-from database import User, Analysis, Payment, ContractorPreference, TenderAlertLog, ReminderLog
+from database import User, Analysis, Payment, ContractorPreference, TenderAlertLog, ReminderLog, WebhookLog
 from payments import generate_payment_link
 from analyzer import analyze_tender_document, is_pdf_too_large
 from utils import detect_language, generate_pdf_report, PLANS, format_inr
