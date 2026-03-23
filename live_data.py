@@ -216,30 +216,36 @@ def extract_location_from_text(text: str) -> str:
         r'(?:at|in|near)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
     ]
     
-    for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            location = match.group(1).strip().rstrip(',.')
-            if len(location) > 3 and len(location) < 50:
-                return location
+    text_lower = text.lower()
     
-    # Check for known Indian state/city names
+    # FIRST: Check for known Indian state/city names (most reliable)
     known_locations = [
-        "Ladakh", "Leh", "Kargil", "Delhi", "Mumbai", "Bangalore", "Chennai",
-        "Kolkata", "Hyderabad", "Pune", "Ahmedabad", "Jaipur", "Lucknow",
-        "Srinagar", "Jammu", "Chandigarh", "Dehradun", "Shimla", "Bhopal",
-        "Patna", "Ranchi", "Bhubaneswar", "Guwahati", "Thiruvananthapuram",
+        "Ladakh", "Leh", "Kargil", "Srinagar", "Jammu",
+        "Delhi", "Mumbai", "Bangalore", "Chennai", "Kolkata", 
+        "Hyderabad", "Pune", "Ahmedabad", "Jaipur", "Lucknow",
+        "Chandigarh", "Dehradun", "Shimla", "Bhopal", "Patna", 
+        "Ranchi", "Bhubaneswar", "Guwahati", "Thiruvananthapuram",
         "Kochi", "Gandhinagar", "Raipur", "Panaji",
         "Uttar Pradesh", "Maharashtra", "Karnataka", "Tamil Nadu", "Gujarat",
         "Rajasthan", "Madhya Pradesh", "Bihar", "West Bengal", "Telangana",
         "Andhra Pradesh", "Kerala", "Punjab", "Haryana", "Jharkhand",
         "Chhattisgarh", "Uttarakhand", "Himachal Pradesh", "Assam", "Odisha",
-        "J&K", "Jammu & Kashmir", "Arunachal Pradesh", "Sikkim",
+        "Jammu & Kashmir", "J&K", "Arunachal Pradesh", "Sikkim",
+        "Meghalaya", "Mizoram", "Manipur", "Nagaland", "Tripura", "Goa",
     ]
     
-    text_lower = text.lower()
     for loc in known_locations:
         if loc.lower() in text_lower:
             return loc
+            
+    # SECOND: Try regex patterns as fallback
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            location = match.group(1).strip().rstrip(',.')
+            if len(location) > 3 and len(location) < 50:
+                skip_words = ["colony", "office", "building", "quarter", "road", "highway", "camp"]
+                if not any(sw in location.lower() for sw in skip_words):
+                    return location
     
     return ""

@@ -54,6 +54,21 @@ async def startup_event():
     print(f"Verify token configured: {'YES' if verify_token_meta or verify_token_generic else 'NO'}")
     print(f"Phone Number ID: {phone_id}")
     print("🔍 ---------------------------")
+    
+    # One-time fix: Credit payment for order_SUetgAmPkc3DpL (Razorpay confirmed paid but webhook missed)
+    try:
+        from database import SessionLocal, User
+        db = SessionLocal()
+        user = db.query(User).filter(User.phone_number == "+916006788068").first()
+        if user and getattr(user, 'paid_credits_remaining', 0) < 1:
+            user.paid_credits_remaining = (user.paid_credits_remaining or 0) + 1
+            db.commit()
+            print("✅ One-time fix: Credited 1 analysis to +916006788068 (missed Razorpay webhook)")
+        db.close()
+    except Exception as e:
+        print(f"One-time credit fix skipped: {e}")
+
+    print("💰 Razorpay webhook should be configured at: https://web-production-b925d.up.railway.app/payment-webhook")
 
     import threading
     import httpx as httpx_sync
