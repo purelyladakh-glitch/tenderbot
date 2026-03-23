@@ -264,6 +264,9 @@ def handle_incoming_message(phone_number: str, text: str, pdf_bytes: bytes, db: 
                     reward_msg = f"🎉 Mubarak ho! Aapke link se ek naye user ne join kiya hai.\n🎁 Aapko mila hai +1 FREE Tender Analysis Credit!\n\nCredits remaining: {referrer.paid_credits_remaining}"
                     send_whatsapp_message(referrer.phone_number, reward_msg)
 
+    # Global timeout check BEFORE overriding updated_at
+    old_updated_at = user.updated_at
+
     # Track activity
     user.updated_at = datetime.utcnow()
     db.commit()
@@ -273,16 +276,13 @@ def handle_incoming_message(phone_number: str, text: str, pdf_bytes: bytes, db: 
                     "awaiting_work_type", "awaiting_value_range", "awaiting_departments",
                     "awaiting_alert_freq"]
     if user.conversation_state in stuck_states:
-        # Use a simple time-based check against the latest webhook log
-        latest_log = db.query(WebhookLog).filter(
-            WebhookLog.source == "meta"
-        ).order_by(WebhookLog.id.desc()).first()
-        
-        if latest_log and latest_log.created_at:
-            time_in_state = (datetime.utcnow() - latest_log.created_at).total_seconds()
+        if old_updated_at:
+            time_in_state = (datetime.utcnow() - old_updated_at).total_seconds()
             if time_in_state > 1800:  # 30 minutes
                 user.conversation_state = "ready"
                 db.commit()
+                # We update the local 'state' variable so the rest of the flow treats them as 'ready'
+                # but we also send a timeout warning.
                 send_whatsapp_message(user.phone_number, 
                     "⚠️ Session timeout ho gaya. Koi baat nahi — aap phir se shuru kar sakte ho!\n\nType 'Menu' for options.")
                 return
@@ -328,7 +328,7 @@ def handle_incoming_message(phone_number: str, text: str, pdf_bytes: bytes, db: 
         send_whatsapp_message(user.phone_number, get_string(user.language_preference, "lang_set_success"))
         return
 
-    if state.startswith("awaiting_"):
+    if state.startswith("awaiting_") and state != "awaiting_payment_choice":
         handle_preference_step(user, text, db)
         return
 
