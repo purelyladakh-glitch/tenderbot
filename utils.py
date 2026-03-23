@@ -27,7 +27,7 @@ PLANS = {
         "credits": 30, # Soft limit
         "alert_tier": "full",
         "description": "Monthly Pro (30 Analyses)",
-        "expiry_days": 30
+        "expiry_days": 60
     }
 }
 

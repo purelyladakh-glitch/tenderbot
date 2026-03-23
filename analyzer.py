@@ -179,8 +179,61 @@ def analyze_tender_document(file_path: str, language: str, db_session=None) -> d
                 )
                 client.files.delete(name=uploaded_file.name)
             
-            # Parse response
-            result_json = response.parsed if hasattr(response, 'parsed') else json.loads(response.text)
+            # Parse response — handle multiple possible formats
+            result_json = None
+
+            # Try response.parsed first (structured output)
+            if hasattr(response, 'parsed') and response.parsed is not None:
+                result_json = response.parsed
+                print(f"✅ Parsed via response.parsed")
+
+            # Try response.text (raw JSON string)
+            if result_json is None and hasattr(response, 'text') and response.text:
+                raw_text = response.text.strip()
+                # Remove markdown code fences if present
+                if raw_text.startswith("```json"):
+                    raw_text = raw_text[7:]
+                if raw_text.startswith("```"):
+                    raw_text = raw_text[3:]
+                if raw_text.endswith("```"):
+                    raw_text = raw_text[:-3]
+                raw_text = raw_text.strip()
+                
+                try:
+                    result_json = json.loads(raw_text)
+                    print(f"✅ Parsed via response.text ({len(raw_text)} chars)")
+                except json.JSONDecodeError as je:
+                    print(f"⚠️ JSON parse failed: {je}")
+                    print(f"⚠️ Raw text preview: {raw_text[:200]}...")
+
+            # Try response.candidates as last resort
+            if result_json is None and hasattr(response, 'candidates') and response.candidates:
+                try:
+                    candidate = response.candidates[0]
+                    if hasattr(candidate, 'content') and candidate.content:
+                        for part in candidate.content.parts:
+                            if hasattr(part, 'text') and part.text:
+                                raw = part.text.strip()
+                                if raw.startswith("```json"):
+                                    raw = raw[7:]
+                                if raw.startswith("```"):
+                                    raw = raw[3:]
+                                if raw.endswith("```"):
+                                    raw = raw[:-3]
+                                result_json = json.loads(raw.strip())
+                                print(f"✅ Parsed via candidates fallback")
+                                break
+                except Exception as ce:
+                    print(f"⚠️ Candidates parsing failed: {ce}")
+
+            if result_json is None:
+                print(f"❌ All parsing methods failed for Gemini response")
+                # Log what we got for debugging
+                if hasattr(response, 'text'):
+                    print(f"response.text type: {type(response.text)}, value: {repr(response.text)[:300]}")
+                if hasattr(response, 'candidates'):
+                    print(f"response.candidates: {response.candidates}")
+                raise Exception("Gemini returned empty or unparseable response")
             
             # Run Self-Review
             reviewed_json = self_review(result_json)
