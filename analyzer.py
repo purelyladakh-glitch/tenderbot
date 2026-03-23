@@ -164,7 +164,10 @@ def analyze_tender_document(file_path: str, language: str, db_session=None) -> d
                 # Searchable PDF: Upload to Gemini Files API
                 uploaded_file = client.files.upload(file=file_path)
                 # Wait for file to be ready (though usually tiny ones are instant)
-                while uploaded_file.state.name == "PROCESSING":
+                def get_state(f):
+                    return f.state.name if hasattr(f.state, 'name') else str(f.state)
+                    
+                while get_state(uploaded_file) == "PROCESSING":
                     time.sleep(1)
                     uploaded_file = client.files.get(name=uploaded_file.name)
                 
