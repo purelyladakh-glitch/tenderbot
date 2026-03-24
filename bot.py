@@ -582,18 +582,62 @@ def process_pdf_background(phone_number: str, pdf_path: str):
         from strings import build_menu
         
         # 1. Format Verdict Header
-        verdict_msg = get_string(user.language_preference, "verdict_header").format(
-            department=analysis_json.get("department", "Tender"),
-            work=analysis_json.get("work_description", "General Work")[:50] + "...",
-            value=format_inr(analysis_json.get("estimated_value", 0)),
-            deadline=analysis_json.get("deadline", "N/A"),
-            days=analysis_json.get("days_to_deadline", "N/A"),
-            verdict=analysis_json.get("bid_verdict", "Unknown"),
-            score=analysis_json.get("bid_score", 0),
-            critical=len(analysis_json.get("critical_risks", [])),
-            warnings=len(analysis_json.get("warnings", [])),
-            bid=format_inr(analysis_json.get("recommended_bid", 0)),
-            profit=format_inr(analysis_json.get("estimated_profit", 0))
+        # 1. Format Verdict Header - Defensive Data Types (FIX A)
+        value = analysis_json.get("estimated_value", 0)
+        if isinstance(value, str):
+            import re
+            nums = re.findall(r'[\d,]+', value.replace(',', ''))
+            if nums:
+                try:
+                    value = int(nums[0].replace(',', ''))
+                except:
+                    value = 0
+        if isinstance(value, (int, float)) and value > 0:
+            if value >= 10000000:
+                value_display = f"₹{value/10000000:.1f} Crores"
+            elif value >= 100000:
+                value_display = f"₹{value/100000:.1f} Lakhs"
+            else:
+                value_display = f"₹{value:,.0f}"
+        else:
+            value_display = "Not specified"
+
+        deadline = analysis_json.get("deadline_date", "")
+        days_remaining = analysis_json.get("days_to_deadline", "")
+        if deadline and str(deadline) != "N/A" and str(deadline).strip():
+            deadline_display = f"📅 Deadline: {deadline}"
+            if days_remaining and str(days_remaining).strip() and str(days_remaining) != "0" and str(days_remaining) != "N/A":
+                deadline_display += f" ({days_remaining} din baaki)"
+        else:
+            deadline_display = "📅 Deadline: Document mein check karein"
+
+        verdict_score = analysis_json.get("bid_score", 0)
+        verdict_text = analysis_json.get("bid_verdict", "")
+        if not verdict_text or verdict_text == "Bid or Skip" or verdict_text == "Unknown":
+            part10 = analysis_json.get("part10_recommendation", "")
+            if "BID" in str(part10).upper():
+                verdict_text = "BID ✅"
+            elif "SKIP" in str(part10).upper():
+                verdict_text = "SKIP ❌"
+            else:
+                verdict_text = "Review needed"
+                
+        if not verdict_score or verdict_score == 0:
+            import re
+            score_match = re.search(r'(\d+)/10', str(analysis_json.get("part10_recommendation", "")))
+            if score_match:
+                verdict_score = int(score_match.group(1))
+
+        verdict_msg = (
+            f"💼 *{analysis_json.get('department', 'Tender')}*\n"
+            f"📝 {str(analysis_json.get('work_description', 'General Work'))[:50]}...\n"
+            f"💰 Value: {value_display}\n"
+            f"{deadline_display}\n\n"
+            f"🎯 *Verdict:* {verdict_text} — {verdict_score}/10\n"
+            f"⚠️ Critical Risks: {len(analysis_json.get('critical_risks', []))}\n"
+            f"📌 Warnings: {len(analysis_json.get('warnings', []))}\n"
+            f"📈 Rec. Bid: {format_inr(analysis_json.get('recommended_bid', 0))}\n"
+            f"💸 Est. Profit: {format_inr(analysis_json.get('estimated_profit', 0))}"
         )
         
         # 2. Get Analysis Menu
@@ -601,9 +645,18 @@ def process_pdf_background(phone_number: str, pdf_path: str):
         full_msg = f"{verdict_msg}\n{menu_msg}"
         
         # 3. Add Low-Credit Nudge if needed
-        if user.paid_credits_remaining < 2 and user.subscription_type != "monthly":
-            nudge = get_string(user.language_preference, "upgrade_nudge_low_credits").format(credits=user.paid_credits_remaining)
-            full_msg += f"\n\n💡 {nudge}"
+        if user.paid_credits_remaining <= 0 and user.subscription_type != "monthly":
+            upsell = (
+                "\n\n💡 *Credits khatam ho gaye!*\n"
+                "Naya plan lein aur analysis jaari rakhein:\n\n"
+                "1️⃣ ₹99 — 1 Analysis\n"
+                "2️⃣ ₹399 — 5 Analyses (60 din) 🔥\n"
+                "3️⃣ ₹799 — 30 Analyses (60 din) 🚀\n\n"
+                "Type *\"plan\"* to buy!"
+            )
+            full_msg += upsell
+        elif user.paid_credits_remaining <= 2 and user.subscription_type != "monthly":
+            full_msg += f"\n\n💡 Sirf {user.paid_credits_remaining} credit bacha hai. Type *\"plan\"* for more!"
         
         # Send everything at once
         send_whatsapp_message(phone_number, full_msg)
@@ -640,13 +693,21 @@ def handle_menu(user: User, intent: str, text: str, latest_analysis: Analysis, d
 
     if intent == "menu_7":
         # Full report: send all parts as a long message
-        parts = []
-        for key in ["part2_eligibility", "part3_risks", "part4_boq", "part5_action_plan", "part6_cost_estimate", "part9_cashflow", "part10_recommendation"]:
-            val = data.get(key, "")
-            if val:
-                parts.append(val)
-        full_text = "\n\n".join(parts)
-        send_long_message(user.phone_number, full_text)
+        sections = [
+            ("📋 ELIGIBILITY CHECK", data.get("part2_eligibility", "")),
+            ("⚠️ HIDDEN RISKS", data.get("part3_risks", "")),
+            ("📊 BOQ & BID STRATEGY", data.get("part4_boq", "")),
+            ("📝 ACTION PLAN", data.get("part5_action_plan", "")),
+            ("💰 COST ESTIMATE", data.get("part6_cost_estimate", "")),
+            ("💼 CASH FLOW", data.get("part9_cashflow", "")),
+            ("🏆 FINAL VERDICT", data.get("part10_recommendation", "")),
+        ]
+        full_report = ""
+        for title, content in sections:
+            if content:
+                full_report += f"\n{'━' * 30}\n*{title}*\n{'━' * 30}\n{content}\n"
+        
+        send_long_message(user.phone_number, full_report.strip())
         
     elif intent == "menu_8":
         # Download PDF
@@ -655,9 +716,13 @@ def handle_menu(user: User, intent: str, text: str, latest_analysis: Analysis, d
         
     elif intent == "menu_9":
         # Share & Earn
-        referral_link = generate_referral_link(user.phone_number)
-        share_msg = f"Dosto ko refer karo aur free credit paao! 🎁\n\nAapka referral link: {referral_link}"
-        send_whatsapp_message(user.phone_number, share_msg)
+        referral_msg = (
+            "🎁 *Dost ko bhi bhejo — aap dono ko free credit milega!*\n"
+            f"👇 Yeh link COPY karke apne contractor friends ko WhatsApp pe bhejo:\n\n"
+            f"https://wa.me/919796700386?text=referral%20from%20+{user.phone_number.replace('+', '')}\n\n"
+            "Jab woh is link se TenderBot join karega, aapko +1 free analysis milega! 🎉"
+        )
+        send_whatsapp_message(user.phone_number, referral_msg)
         
     elif intent in intent_map:
         # Single section
@@ -666,11 +731,37 @@ def handle_menu(user: User, intent: str, text: str, latest_analysis: Analysis, d
         
         # Add a subtle "Share & Earn" nudge at the end of every detailed section
         referral_link = generate_referral_link(user.phone_number)
-        nudge = f"\n\n🎁 *Tip:* Share TenderBot with a friend and get +1 Free Credit!\n{referral_link}"
+        nudge = f"\n\n🎁 *Tip:* Yeh link COPY karke dosto ko bhejo and get free credit!\nhttps://wa.me/919796700386?text=referral%20from%20+{user.phone_number.replace('+', '')}"
         
         send_long_message(user.phone_number, section_text + nudge)
         
     else:
+        text_lower = text.lower()
+        keyword_map = {
+            "eligib": "part2_eligibility",
+            "risk": "part3_risks",
+            "boq": "part4_boq",
+            "bid": "part4_boq",
+            "strategy": "part4_boq",
+            "action": "part5_action_plan",
+            "document": "part5_action_plan",
+            "cost": "part6_cost_estimate",
+            "estimate": "part6_cost_estimate",
+            "competitor": "part7_competitor",
+            "subcontract": "part8_subcontractors",
+            "cash": "part9_cashflow",
+            "capital": "part9_cashflow",
+            "verdict": "part10_recommendation",
+            "recommend": "part10_recommendation",
+            "summary": "part1_summary",
+        }
+        for keyword, part_key in keyword_map.items():
+            if keyword in text_lower:
+                content = data.get(part_key, get_string(user.language_preference, "section_not_available"))
+                nudge = f"\n\n🎁 *Tip:* Yeh link COPY karke dosto ko bhejo and get free credit!\nhttps://wa.me/919796700386?text=referral%20from%20+{user.phone_number.replace('+', '')}"
+                send_long_message(user.phone_number, content + nudge)
+                return
+                
         # Unknown or verdict menu
         send_whatsapp_message(user.phone_number, get_string(user.language_preference, "menu_fallback"))
 
