@@ -252,17 +252,23 @@ def handle_incoming_message(phone_number: str, text: str, pdf_bytes: bytes, db: 
         db.refresh(user)
         
         # REFERRAL REWARD: If this user was referred, reward the referrer
-        if referrer_phone and referrer_phone != phone_number:
-            referrer = db.query(User).filter(User.phone_number == referrer_phone).first()
-            if referrer:
-                # Anti-Abuse: Max 20 referral credits per user
-                referral_count = db.query(User).filter(User.referred_by == referrer_phone).count()
-                if referral_count <= 20:
-                    referrer.paid_credits_remaining += 1
-                    db.commit()
-                    # Notify referrer
-                    reward_msg = f"🎉 Mubarak ho! Aapke link se ek naye user ne join kiya hai.\n🎁 Aapko mila hai +1 FREE Tender Analysis Credit!\n\nCredits remaining: {referrer.paid_credits_remaining}"
-                    send_whatsapp_message(referrer.phone_number, reward_msg)
+        if referrer_phone:
+            import re
+            safe_referrer = re.sub(r'\D', '', str(referrer_phone))
+            safe_me = re.sub(r'\D', '', str(phone_number))
+            
+            if safe_referrer and safe_me and safe_referrer not in safe_me and safe_me not in safe_referrer:
+                # We need to find the user by partial match since DB might have it with/without country code
+                referrer = db.query(User).filter(User.phone_number.like(f"%{safe_referrer}%")).first()
+                if referrer:
+                    # Anti-Abuse: Max 20 referral credits per user
+                    referral_count = db.query(User).filter(User.referred_by == referrer_phone).count()
+                    if referral_count <= 20:
+                        referrer.paid_credits_remaining += 1
+                        db.commit()
+                        # Notify referrer
+                        reward_msg = f"🎉 Mubarak ho! Aapke link se ek naye user ne join kiya hai.\n🎁 Aapko mila hai +1 FREE Tender Analysis Credit!\n\nCredits remaining: {referrer.paid_credits_remaining}"
+                        send_whatsapp_message(referrer.phone_number, reward_msg)
 
     # Global timeout check BEFORE overriding updated_at
     old_updated_at = user.updated_at
