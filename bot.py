@@ -412,27 +412,52 @@ def start_preference_setup(user: User, db: Session):
     user.conversation_state = "awaiting_location"
     db.commit()
     msg = get_string(user.language_preference, "pref_location_prompt")
-    sections = [
-        {
-            "title": "Quick Pick Locations",
-            "rows": [
-                {"id": "loc_all", "title": "1. All India (All States) 🇮🇳", "description": "Track every tender"},
-                {"id": "loc_mh", "title": "2. Maharashtra 🍊", "description": "Local MH tenders"},
-                {"id": "loc_dl", "title": "3. Delhi / NCR 🏛️", "description": "Capital region"},
-                {"id": "loc_jk", "title": "5. J&K and Ladakh 🏔️", "description": "Paradise tenders"},
-            ]
-        }
-    ]
-    send_interactive_list(user.phone_number, msg, "Select Location", sections)
+    send_whatsapp_message(user.phone_number, msg)
 
 def handle_preference_step(user: User, text: str, db: Session):
     state = user.conversation_state
     pref = get_or_create_preferences(db, user.phone_number)
-    # Simplified logic to restore state
+    
     if state == "awaiting_location":
+        pref.state_names = text[:100]
+        user.conversation_state = "awaiting_work_type"
+        db.commit()
+        send_whatsapp_message(user.phone_number, get_string(user.language_preference, "pref_work_type_prompt"))
+        
+    elif state == "awaiting_work_type":
+        pref.work_types = text[:100]
+        user.conversation_state = "awaiting_value_range"
+        db.commit()
+        send_whatsapp_message(user.phone_number, get_string(user.language_preference, "pref_value_range_prompt"))
+        
+    elif state == "awaiting_value_range":
+        pref.min_value = 0
+        pref.max_value = 9999999999
+        user.conversation_state = "awaiting_departments"
+        db.commit()
+        send_whatsapp_message(user.phone_number, get_string(user.language_preference, "pref_departments_prompt"))
+        
+    elif state == "awaiting_departments":
+        pref.departments = text[:100]
+        user.conversation_state = "awaiting_alert_freq"
+        db.commit()
+        send_whatsapp_message(user.phone_number, get_string(user.language_preference, "pref_alert_freq_prompt"))
+        
+    elif state == "awaiting_alert_freq":
+        pref.alerts_enabled = True
         user.conversation_state = "ready"
         db.commit()
-        send_whatsapp_message(user.phone_number, "Location set. You are ready!")
+        
+        summary = get_string(user.language_preference, "pref_summary").format(
+            state_names=pref.state_names or "All",
+            work_types=pref.work_types or "All",
+            min_value="All",
+            max_value="Any",
+            departments=pref.departments or "All",
+            alerts=text[:20],
+            num_portals="15+"
+        )
+        send_whatsapp_message(user.phone_number, summary)
 
 def change_language_request(user: User, db: Session):
     user.conversation_state = "new"
@@ -472,13 +497,28 @@ def show_balance(user: User):
     send_whatsapp_message(user.phone_number, f"Credits: {user.paid_credits_remaining}")
 
 def pause_alerts(user: User, db: Session):
-    send_whatsapp_message(user.phone_number, "Alerts paused.")
+    pref = get_or_create_preferences(db, user.phone_number)
+    pref.alerts_enabled = False
+    db.commit()
+    send_whatsapp_message(user.phone_number, get_string(user.language_preference, "alerts_paused"))
 
 def resume_alerts(user: User, db: Session):
-    send_whatsapp_message(user.phone_number, "Alerts resumed.")
+    pref = get_or_create_preferences(db, user.phone_number)
+    pref.alerts_enabled = True
+    db.commit()
+    send_whatsapp_message(user.phone_number, get_string(user.language_preference, "alerts_resumed"))
 
 def show_history(user: User, db: Session):
-    send_whatsapp_message(user.phone_number, "History shown here.")
+    analyses = db.query(Analysis).filter(Analysis.user_phone == user.phone_number).order_by(Analysis.id.desc()).limit(3).all()
+    if not analyses:
+        send_whatsapp_message(user.phone_number, get_string(user.language_preference, "no_past_analysis"))
+        return
+    msg = get_string(user.language_preference, "recent_analyses_header") + "\n\n"
+    for a in analyses:
+        desc = (a.tender_summary or "Custom Tender")[:40]
+        msg += f"📄 *{desc}*\n🗓️ {str(a.created_at)[:10]}\n\n"
+    msg += get_string(user.language_preference, "total_analyses_done").format(total=user.total_analyses_done)
+    send_whatsapp_message(user.phone_number, msg)
 
 def handle_search(user: User, text: str, db: Session):
     from portals import search_portals_for_query, format_search_results
@@ -547,13 +587,15 @@ def process_pdf_background(phone_number: str, pdf_path: str):
             print(f"❌ Analysis failed for {user.phone_number}: {e}")
             user.conversation_state = "ready"
             db.commit()
-            send_whatsapp_message(user.phone_number, 
-                "❌ Sorry! Analysis mein error aa gaya.\n\n"
-                "Possible reasons:\n"
-                "• PDF bahut bada hai (max 50MB)\n"
-                "• PDF password protected hai\n"  
-                "• PDF corrupt ya damaged hai\n\n"
-                "Please ek aur baar try karo ya doosra PDF bhejo.")
+            
+            base_err = get_string(user.language_preference, "error_generic")
+            full_err = (f"{base_err}\n\n"
+                        "Possible reasons:\n"
+                        "• PDF is too large (>50MB)\n"
+                        "• PDF is password protected\n"  
+                        "• PDF is corrupt/damaged\n\n"
+                        "Please try again or send a different PDF.")
+            send_whatsapp_message(user.phone_number, full_err)
             return
 
         if user.subscription_type == "free":
