@@ -202,7 +202,13 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
 def read_root():
-    return {"status": "ok", "app": "TenderBot - WhatsApp Tender Analysis Bot"}
+    import os
+    from fastapi.responses import HTMLResponse
+    index_path = os.path.join("static", "index.html")
+    if os.path.exists(index_path):
+        with open(index_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return {"status": "ok", "app": "BidMaster AI - WhatsApp Tender Analysis Bot"}
 
 @app.get("/health")
 def health_check():
