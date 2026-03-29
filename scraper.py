@@ -51,9 +51,12 @@ SCRAPE_PORTALS = [
     {"domain": "hptenders.gov.in",     "state": "Himachal Pradesh",  "type": "nicgep"},
     {"domain": "uktenders.gov.in",     "state": "Uttarakhand",       "type": "nicgep"},
     {"domain": "eproc.punjab.gov.in",  "state": "Punjab",            "type": "nicgep"},
-    # --- Added from audit ---
     {"domain": "mahatenders.gov.in",   "state": "Maharashtra",       "type": "nicgep"},
-    {"domain": "tenderwizard.com/GUVNL", "state": "Gujarat",         "type": "nicgep"},
+    {"domain": "mptenders.gov.in",     "state": "Madhya Pradesh",    "type": "nicgep"},
+    {"domain": "tntenders.gov.in",     "state": "Tamil Nadu",        "type": "nicgep"},
+    {"domain": "etenders.kerala.gov.in","state": "Kerala",           "type": "nicgep"},
+    {"domain": "assamtenders.gov.in",  "state": "Assam",             "type": "nicgep"},
+    {"domain": "eproc.cgstate.gov.in", "state": "Chhattisgarh",      "type": "nicgep"},
 ]
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

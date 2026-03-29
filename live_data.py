@@ -85,9 +85,9 @@ ESTIMATION RULES:
 - Mobilization Advance: Usually 10% (if available)
 
 REGIONAL MODIFIERS:
-- Ladakh/Leh/Kargil: +30-40% transport, +20-30% labour, May-Oct only
-- J&K Kashmir Valley: +15-20% transport
-- Northeast India: +20-30% transport
+- Ladakh/Leh/Kargil: +30-40% transport, +30% labour (ILP needed), Working season strictly May-Oct due to Zojila closure.
+- J&K Kashmir Valley: +15-20% transport, Snowfall delays Dec-Feb.
+- J&K Jammu Region: +5-10% transport, Standard working season.
 - Himalayan high altitude: +15-25%
 - Island UTs (Andaman/Lakshadweep): +40-50% transport
 - Metro Cities: +10-15% labour premium
@@ -162,8 +162,9 @@ ESTIMATION RULES:
 - EMD: 2% of tender value
 - Performance security: 3-5%
 
-Be specific to {location}. Do NOT give generic all-India averages.
-If {location} is in a remote/high-altitude area, factor in transport premiums."""
+CRITICAL REGIONAL CONTEXT:
+Be extremely specific to {location}. Do NOT give generic all-India averages.
+If {location} is in Ladakh, Leh, Kargil, Jammu, or Kashmir, you MUST factor in heavy transport premiums (+30-40%), specialized winter clothing/shelter allowances for labor, and the short working season (May to October). The rates you output MUST reflect these high-altitude ground realities."""
 
         response = client.models.generate_content(
             model="gemini-flash-latest",

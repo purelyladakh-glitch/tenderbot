@@ -5,7 +5,7 @@ CRITICAL: Think step by step before generating each section. Cross-reference num
 
 You MUST output your response strictly as a JSON object with the schema below.
 Do NOT output Markdown code blocks around the JSON. Return raw JSON only.
-All text values MUST be in the language requested (default Hinglish) with emojis where appropriate.
+CRITICAL: All text values MUST be completely in the requested language. Do NOT arbitrarily mix English text inside Hindi/Marathi sentences unless explicitly requested as Hinglish. Keep the language exactly to what the user requested. Add relevant emojis.
 
 CRITICAL TEXT FORMATTING RULES FOR JSON VALUES:
 - NEVER write continuous long paragraphs or inline lists like (a)... (b)... (c)....
@@ -48,7 +48,9 @@ CRITICAL TEXT FORMATTING RULES FOR JSON VALUES:
 
   "part9_cashflow": "CASH FLOW & WORKING CAPITAL: Use bullet points (\\n- ). Upfront capital needed, monthly expenditure, payment cycle, total working capital needed.",
 
-  "part10_recommendation": "FINAL VERDICT: Format: '🏆 VERDICT: X/10 — [BID/SKIP]' \\n\\nUse bullet points (\\n- ) for: Top 3 reasons to bid, Top 3 reasons to skip. Conclude with Recommended bid, Expected profit, and Final advice."
+  "part10_recommendation": "FINAL VERDICT: Format: '🏆 VERDICT: X/10 — [BID/SKIP]' \\n\\nUse bullet points (\\n- ) for: Top 3 reasons to bid, Top 3 reasons to skip. Conclude with Recommended bid, Expected profit, and Final advice.",
+
+  "part11_contractor_tip": "CONTRACTOR INSIDER TIP: Provide 1-2 highly practical, 'insider' tips for this specific tender (e.g., local material sourcing, specific sub-contracting strategy, loophole to watch out for, or smart bidding tactic). Use a 💡 emoji."
 }
 
 CRITICAL QUALITY RULES:
@@ -59,4 +61,5 @@ CRITICAL QUALITY RULES:
 5. If the text appears to be from OCR (messy formatting, garbled characters), be tolerant of misread numbers.
 6. Add '⚠️ AI analysis — guidance only. Original document zaroor padho final decision se pehle.' at the end of EACH text part.
 7. Make language conversational, professional, and practical for Indian contractors.
+8. ⛰️ HIGH-ALTITUDE / J&K / LADAKH RULE: If the location is Jammu, Kashmir, Ladakh, Leh, or Kargil, you MUST mentally factor in: 1) Short working season (snow closures from Nov-April), 2) High 30-40% transport and labor premiums due to remote terrain, 3) Border region constraints (Inner Line Permits for non-local labor). Highlight these extremely explicitly in HIDDEN RISKS and strategically adjust the COST ESTIMATES.
 """

@@ -10,24 +10,24 @@ load_dotenv()
 PLANS = {
     "single": {
         "price": 99,
-        "credits": 1,
+        "credits": 3,
         "alert_tier": "free",
-        "description": "1 Tender Analysis",
-        "expiry_days": None
+        "description": "Basic Pack (3 Analyses)",
+        "expiry_days": 14
     },
     "pack": {
         "price": 399,
-        "credits": 5,
+        "credits": 15,
         "alert_tier": "basic",
-        "description": "5 Tender Pack",
+        "description": "Value Pack (15 Analyses)",
         "expiry_days": 60
     },
     "monthly": {
-        "price": 799,
+        "price": 699,
         "credits": 30, # Soft limit
         "alert_tier": "full",
-        "description": "Monthly Pro (30 Analyses)",
-        "expiry_days": 60
+        "description": "Quarterly Pro (30 Analyses)",
+        "expiry_days": 90
     }
 }
 

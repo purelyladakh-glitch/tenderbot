@@ -71,12 +71,12 @@ def self_review(result_json: dict) -> dict:
     """
     warnings = result_json.get("warnings", [])
     
-    # Check all 9 parts exist
+    # Check all parts exist
     required_parts = [
         "part1_summary", "part2_eligibility", "part3_risks", 
         "part4_boq", "part5_action_plan", "part6_cost_estimate",
         "part7_competitor", "part8_subcontractors", "part9_cashflow",
-        "part10_recommendation"
+        "part10_recommendation", "part11_contractor_tip"
     ]
     
     for part in required_parts:

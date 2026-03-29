@@ -264,10 +264,10 @@ def handle_incoming_message(phone_number: str, text: str, pdf_bytes: bytes, db: 
                     # Anti-Abuse: Max 20 referral credits per user
                     referral_count = db.query(User).filter(User.referred_by == referrer_phone).count()
                     if referral_count <= 20:
-                        referrer.paid_credits_remaining += 1
+                        referrer.paid_credits_remaining += 2
                         db.commit()
                         # Notify referrer
-                        reward_msg = f"🎉 Mubarak ho! Aapke link se ek naye user ne join kiya hai.\n🎁 Aapko mila hai +1 FREE Tender Analysis Credit!\n\nCredits remaining: {referrer.paid_credits_remaining}"
+                        reward_msg = f"🎉 Mubarak ho! Aapke link se ek naye user ne join kiya hai.\n🎁 Aapko mila hai +2 FREE Tender Analysis Credits!\n\nCredits remaining: {referrer.paid_credits_remaining}"
                         send_whatsapp_message(referrer.phone_number, reward_msg)
 
     # Global timeout check BEFORE overriding updated_at
@@ -412,49 +412,105 @@ def start_preference_setup(user: User, db: Session):
     user.conversation_state = "awaiting_location"
     db.commit()
     msg = get_string(user.language_preference, "pref_location_prompt")
-    send_whatsapp_message(user.phone_number, msg)
+    sections = [{ "title": "States", "rows": [
+        {"id": "J&K & Ladakh", "title": "J&K & Ladakh ⛰️"},
+        {"id": "All India", "title": "All India 🇮🇳"},
+        {"id": "Maharashtra", "title": "Maharashtra 🏙️"},
+        {"id": "Delhi NCR", "title": "Delhi NCR 🏛️"},
+        {"id": "Punjab & Haryana", "title": "Punjab & Haryana 🌾"},
+        {"id": "Uttar Pradesh", "title": "Uttar Pradesh 🕌"},
+        {"id": "Karnataka", "title": "Karnataka 🏢"},
+        {"id": "Gujarat", "title": "Gujarat 🏭"}
+    ]}]
+    send_interactive_list(user.phone_number, msg, "Select State", sections)
 
 def handle_preference_step(user: User, text: str, db: Session):
     state = user.conversation_state
     pref = get_or_create_preferences(db, user.phone_number)
     
     if state == "awaiting_location":
-        pref.state_names = text[:100]
+        loc_map = {"1": "J&K & Ladakh", "2": "All India", "3": "Maharashtra", "4": "Delhi NCR", "5": "Punjab & Haryana", "6": "Uttar Pradesh", "7": "Karnataka", "8": "Gujarat"}
+        mapped_text = loc_map.get(text.strip(), text.strip()[:100])
+        pref.states_list = json.dumps([mapped_text])
         user.conversation_state = "awaiting_work_type"
         db.commit()
-        send_whatsapp_message(user.phone_number, get_string(user.language_preference, "pref_work_type_prompt"))
+        msg = get_string(user.language_preference, "pref_work_type_prompt")
+        sections = [{ "title": "Work Types", "rows": [
+            {"id": "Roads & Highways", "title": "Roads & Highways 🛣️"},
+            {"id": "Building / Civil", "title": "Building / Civil 🏗️"},
+            {"id": "Electrical", "title": "Electrical ⚡"},
+            {"id": "Water Supply", "title": "Water Supply 💧"},
+            {"id": "Bridges & Flyovers", "title": "Bridges & Flyovers 🌉"},
+            {"id": "Solar & Renewable", "title": "Solar & Renewable ☀️"}
+        ]}]
+        send_interactive_list(user.phone_number, msg, "Select Work", sections)
         
     elif state == "awaiting_work_type":
-        pref.work_types = text[:100]
+        work_map = {"1": "Roads & Highways", "2": "Building / Civil", "3": "Electrical", "4": "Water Supply", "5": "Bridges & Flyovers", "6": "Solar & Renewable"}
+        mapped_text = work_map.get(text.strip(), text.strip()[:100])
+        pref.work_types = json.dumps([mapped_text])
         user.conversation_state = "awaiting_value_range"
         db.commit()
-        send_whatsapp_message(user.phone_number, get_string(user.language_preference, "pref_value_range_prompt"))
+        msg = get_string(user.language_preference, "pref_value_range_prompt")
+        sections = [{ "title": "Values", "rows": [
+            {"id": "5000000", "title": "Upto 50 Lakh", "description": "0-50L"},
+            {"id": "50000000", "title": "50L - 5 Crore", "description": "50L-5C"},
+            {"id": "200000000", "title": "5C - 20 Crore", "description": "5C-20C"},
+            {"id": "1000000000", "title": "20C - 100 Crore", "description": "20C-100C"},
+            {"id": "99999000000", "title": "All Amounts", "description": "Any value"}
+        ]}]
+        send_interactive_list(user.phone_number, msg, "Select Value", sections)
         
     elif state == "awaiting_value_range":
+        try:
+            val_map = {"1": 5000000, "2": 50000000, "3": 200000000, "4": 1000000000, "5": 99999000000}
+            max_val = val_map.get(text.strip(), int(text.strip()))
+        except:
+            max_val = 99999000000
         pref.min_value = 0
-        pref.max_value = 9999999999
+        pref.max_value = max_val
         user.conversation_state = "awaiting_departments"
         db.commit()
-        send_whatsapp_message(user.phone_number, get_string(user.language_preference, "pref_departments_prompt"))
+        msg = get_string(user.language_preference, "pref_departments_prompt")
+        sections = [{ "title": "Departments", "rows": [
+            {"id": "All Gov", "title": "All Gov 🏛️"},
+            {"id": "PWD / CPWD / Municipal", "title": "PWD / Municipal 🏢"},
+            {"id": "Highways", "title": "Highways 🛣️"},
+            {"id": "Railways & Metro", "title": "Railways & Metro 🚂"},
+            {"id": "Water Depts", "title": "Water Depts 💧"},
+            {"id": "Defence / MES", "title": "Defence / MES 🛡️"}
+        ]}]
+        send_interactive_list(user.phone_number, msg, "Select Dept", sections)
         
     elif state == "awaiting_departments":
-        pref.departments = text[:100]
+        dept_map = {"1": "All Gov", "2": "PWD / CPWD / Municipal", "3": "Highways", "4": "Railways & Metro", "5": "Water Depts", "6": "Defence / MES"}
+        mapped_text = dept_map.get(text.strip(), text.strip()[:100])
+        pref.departments = json.dumps([mapped_text])
         user.conversation_state = "awaiting_alert_freq"
         db.commit()
-        send_whatsapp_message(user.phone_number, get_string(user.language_preference, "pref_alert_freq_prompt"))
+        msg = get_string(user.language_preference, "pref_alert_freq_prompt")
+        sections = [{ "title": "Speed", "rows": [
+            {"id": "instant", "title": "Instant 🚀", "description": "Real-time alerts"},
+            {"id": "daily", "title": "Daily Morning ☀️", "description": "8 AM digest"},
+            {"id": "weekly", "title": "Weekly 📅", "description": "Monday summary"}
+        ]}]
+        send_interactive_list(user.phone_number, msg, "Select Speed", sections)
         
     elif state == "awaiting_alert_freq":
-        pref.alerts_enabled = True
+        pref.alert_frequency = text.strip() if text.strip() in ["instant", "daily", "weekly"] else "daily"
+        pref.alerts_paused = False
         user.conversation_state = "ready"
         db.commit()
         
+        from utils import format_inr
+        max_v = format_inr(pref.max_value) if pref.max_value < 99999000000 else "Any"
         summary = get_string(user.language_preference, "pref_summary").format(
-            state_names=pref.state_names or "All",
+            state_names=pref.states_list or "All",
             work_types=pref.work_types or "All",
             min_value="All",
-            max_value="Any",
+            max_value=max_v,
             departments=pref.departments or "All",
-            alerts=text[:20],
+            alerts=pref.alert_frequency,
             num_portals="15+"
         )
         send_whatsapp_message(user.phone_number, summary)
@@ -477,9 +533,9 @@ def show_plans(user: User, db: Session):
     db.commit()
     msg = get_string(user.language_preference, "plan_options")
     sections = [{ "title": "Available Plans", "rows": [
-        {"id": "buy_1", "title": "1. Single Analysis", "description": "₹99"},
-        {"id": "buy_2", "title": "2. 5 Report Pack", "description": "₹399"},
-        {"id": "buy_3", "title": "3. Monthly Pro", "description": "₹799"},
+        {"id": "buy_1", "title": "1. Basic Pack", "description": "₹99 - 3 Reports (14d)"},
+        {"id": "buy_2", "title": "2. Value Pack", "description": "₹399 - 15 Reports (60d)"},
+        {"id": "buy_3", "title": "3. Quarterly Pro", "description": "₹699 - 30 Reports (90d)"},
     ]}]
     send_interactive_list(user.phone_number, msg, "View Plans", sections)
 
@@ -531,17 +587,17 @@ def handle_search(user: User, text: str, db: Session):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def handle_new_pdf(user: User, pdf_bytes: bytes, db: Session, background_tasks):
-    if not (user.free_analyses_used < 1 or user.paid_credits_remaining > 0):
+    if not (user.free_analyses_used < 5 or user.paid_credits_remaining > 0):
         from payments import generate_payment_link
         from utils import PLANS
         
-        link_99 = generate_payment_link(PLANS["single"]["price"], user.phone_number, "UPGRADE_99", "Single Analysis")
+        link_99 = generate_payment_link(PLANS["single"]["price"], user.phone_number, "UPGRADE_99", "Basic Pack")
         msg = get_string(user.language_preference, "payment_options_prompt").format(link_99=link_99)
         
         sections = [{ "title": "Upgrade Plans", "rows": [
-            {"id": "buy_1", "title": "1. Single Analysis", "description": "₹99"},
-            {"id": "buy_2", "title": "2. 5 Report Pack", "description": "₹399"},
-            {"id": "buy_3", "title": "3. Monthly Pro", "description": "₹799"},
+            {"id": "buy_1", "title": "1. Basic Pack", "description": "₹99 - 3 Reports"},
+            {"id": "buy_2", "title": "2. Value Pack", "description": "₹399 - 15 Reports"},
+            {"id": "buy_3", "title": "3. Quarterly Pro", "description": "₹699 - 30 Reports"},
         ]}]
         
         user.conversation_state = "awaiting_payment_choice"
@@ -697,9 +753,9 @@ def process_pdf_background(phone_number: str, pdf_path: str):
             upsell = (
                 "\n\n💡 *Credits khatam ho gaye!*\n"
                 "Naya plan lein aur analysis jaari rakhein:\n\n"
-                "1️⃣ ₹99 — 1 Analysis\n"
-                "2️⃣ ₹399 — 5 Analyses (60 din) 🔥\n"
-                "3️⃣ ₹799 — 30 Analyses (60 din) 🚀\n\n"
+                "1️⃣ ₹99 — Basic Pack (3 Reports)\n"
+                "2️⃣ ₹399 — Value Pack (15 Reports) 🔥\n"
+                "3️⃣ ₹699 — Quarterly Pro (30 Reports) 🚀\n\n"
                 "Type *\"plan\"* to buy!"
             )
             full_msg += upsell
@@ -748,7 +804,10 @@ def handle_menu(user: User, intent: str, text: str, latest_analysis: Analysis, d
             ("📝 ACTION PLAN", data.get("part5_action_plan", "")),
             ("💰 COST ESTIMATE", data.get("part6_cost_estimate", "")),
             ("💼 CASH FLOW", data.get("part9_cashflow", "")),
+            ("👥 COMPETITOR INTELLIGENCE", data.get("part7_competitor", "")),
+            ("🏗️ SUBCONTRACTORS", data.get("part8_subcontractors", "")),
             ("🏆 FINAL VERDICT", data.get("part10_recommendation", "")),
+            ("💡 INSIDER TIP", data.get("part11_contractor_tip", "")),
         ]
         full_report = ""
         for title, content in sections:
@@ -767,7 +826,7 @@ def handle_menu(user: User, intent: str, text: str, latest_analysis: Analysis, d
         referral_msg = (
             "🎁 *Dost ko bhi bhejo — aap dono ko free credit milega!*\n"
             f"👇 Yeh link COPY karke apne contractor friends ko WhatsApp pe bhejo:\n\n"
-            f"https://wa.me/919796700386?text=referral%20from%20+{user.phone_number.replace('+', '')}\n\n"
+            f"https://wa.me/?text=Hey!%20Use%20TenderBot%20to%20analyse%20government%20tenders%20instantly.%20Click%20here%20to%20start:%20https://wa.me/919796700386?text=referral%20from%20%2B{user.phone_number.replace('+', '')}\n\n"
             "Jab woh is link se TenderBot join karega, aapko +1 free analysis milega! 🎉"
         )
         send_whatsapp_message(user.phone_number, referral_msg)
