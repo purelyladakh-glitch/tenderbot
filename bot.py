@@ -231,8 +231,8 @@ def detect_intent(text: str) -> str:
 def handle_incoming_message(phone_number: str, text: str, pdf_bytes: bytes, db: Session, background_tasks):
     # --- ADMIN COMMANDS ---
     if text and text.strip().lower() in ["!stats", "!admin"]:
-        # Give access to common admin numbers from previous context + any ENV var
-        admin_phones = [os.getenv("ADMIN_PHONE", "+916006788068"), "+919796700386", "919796700386", "916006788068"]
+        # Give access to authorized admin numbers
+        admin_phones = [os.getenv("ADMIN_PHONE", "+916006224209"), "+916006224209", "916006224209", "+916006788068", "916006788068"]
         if any(p in phone_number for p in admin_phones):
             import os
             from sqlalchemy import func
