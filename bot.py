@@ -229,6 +229,35 @@ def detect_intent(text: str) -> str:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def handle_incoming_message(phone_number: str, text: str, pdf_bytes: bytes, db: Session, background_tasks):
+    # --- ADMIN COMMANDS ---
+    if text and text.strip().lower() in ["!stats", "!admin"]:
+        # Give access to common admin numbers from previous context + any ENV var
+        admin_phones = [os.getenv("ADMIN_PHONE", "+916006788068"), "+919796700386", "919796700386", "916006788068"]
+        if any(p in phone_number for p in admin_phones):
+            import os
+            from sqlalchemy import func
+            from datetime import datetime, timedelta
+            from database import Payment, Analysis
+            
+            total_users = db.query(User).count()
+            active_today = db.query(User).filter(User.created_at > datetime.utcnow() - timedelta(days=1)).count()
+            total_analyses = db.query(Analysis).count()
+            total_payments = db.query(Payment).filter(Payment.status == "paid").count()
+            total_revenue = db.query(func.sum(Payment.amount)).filter(Payment.status == "paid").scalar() or 0
+            
+            stats_msg = (
+                "📊 *TenderBot Live Analytics*\n\n"
+                f"👥 Total Users: {total_users}\n"
+                f"🔥 New Users (24h): {active_today}\n"
+                f"📄 Total Analyses: {total_analyses}\n"
+                f"💳 Paid Orders: {total_payments}\n"
+                f"💰 Total Revenue: ₹{total_revenue:,.2f}\n\n"
+                f"🕒 Time: {datetime.utcnow().strftime('%H:%M UTC')}"
+            )
+            send_whatsapp_message(phone_number, stats_msg)
+            return
+    # --- END ADMIN COMMANDS ---
+
     referrer_phone = None
     if text and "referral from" in text.lower():
         import re
