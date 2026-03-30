@@ -238,18 +238,32 @@ def handle_incoming_message(phone_number: str, text: str, pdf_bytes: bytes, db: 
             
             total_users = db.query(User).count()
             active_today = db.query(User).filter(User.created_at > datetime.utcnow() - timedelta(days=1)).count()
+            
+            # Source grouping
+            # Note: We use getattr in case the column doesn't exist yet while Railway migrations run
+            sources = []
+            try:
+                sources = db.query(User.source, func.count(User.phone_number)).group_by(User.source).all()
+            except Exception:
+                pass
+            
+            source_text = "\n".join([f"  • {str(s[0]).replace('_', ' ').title()}: {s[1]}" for s in sources if s[0]])
+            if not source_text:
+                source_text = "  • Organic: 100%"
+                
             total_analyses = db.query(Analysis).count()
             total_payments = db.query(Payment).filter(Payment.status == "paid").count()
             total_revenue = db.query(func.sum(Payment.amount)).filter(Payment.status == "paid").scalar() or 0
             
             stats_msg = (
-                "📊 *TenderBot Live Analytics*\n\n"
+                "📊 *BidMaster AI Live Analytics*\n\n"
                 f"👥 Total Users: {total_users}\n"
-                f"🔥 New Users (24h): {active_today}\n"
+                f"🔥 New Users (24h): {active_today}\n\n"
+                f"📍 *Traffic Sources:*\n{source_text}\n\n"
                 f"📄 Total Analyses: {total_analyses}\n"
                 f"💳 Paid Orders: {total_payments}\n"
                 f"💰 Total Revenue: ₹{total_revenue:,.2f}\n\n"
-                f"🕒 Time: {datetime.utcnow().strftime('%H:%M UTC')}"
+                f"🕒 Server Time: {datetime.utcnow().strftime('%H:%M UTC')}"
             )
             send_whatsapp_message(phone_number, stats_msg)
             return
@@ -266,12 +280,20 @@ def handle_incoming_message(phone_number: str, text: str, pdf_bytes: bytes, db: 
 
     user = db.query(User).filter(User.phone_number == phone_number).first()
     if not user:
+        # Determine User Source
+        user_source = "organic"
+        if referrer_phone:
+            user_source = "referral"
+        elif text and "bidmaster" in text.lower():
+            user_source = "landing_page"
+
         lang = detect_language(text) if text else "hinglish"
         user = User(
             phone_number=phone_number,
             language_preference=lang,
             conversation_state="new",
             referred_by=referrer_phone,
+            source=user_source,
         )
         db.add(user)
         db.commit()

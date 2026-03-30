@@ -39,6 +39,7 @@ class User(Base):
     language_preference = Column(String, default="Hinglish")
     conversation_state = Column(String, default="new")
     referred_by = Column(String, nullable=True)  # Phone number of the referrer
+    source = Column(String, default="organic")   # organic / landing_page / referral
     # new | awaiting_location | awaiting_work_type | awaiting_value_range |
     # awaiting_departments | awaiting_alert_freq | ready | analyzing | menu
 
