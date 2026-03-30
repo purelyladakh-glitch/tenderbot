@@ -234,10 +234,7 @@ def handle_incoming_message(phone_number: str, text: str, pdf_bytes: bytes, db: 
         # Give access to authorized admin numbers
         admin_phones = [os.getenv("ADMIN_PHONE", "+916006224209"), "+916006224209", "916006224209", "+916006788068", "916006788068"]
         if any(p in phone_number for p in admin_phones):
-            import os
             from sqlalchemy import func
-            from datetime import datetime, timedelta
-            from database import Payment, Analysis
             
             total_users = db.query(User).count()
             active_today = db.query(User).filter(User.created_at > datetime.utcnow() - timedelta(days=1)).count()
