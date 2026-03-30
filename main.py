@@ -208,7 +208,7 @@ def read_root():
     if os.path.exists(index_path):
         with open(index_path, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
-    return {"status": "ok", "app": "BidMaster AI - WhatsApp Tender Analysis Bot"}
+    return {"status": "ok", "app": "TenderBot - WhatsApp Tender Analysis Bot"}
 
 @app.get("/health")
 def health_check():
