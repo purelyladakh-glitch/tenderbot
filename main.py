@@ -210,6 +210,22 @@ def read_root():
             return HTMLResponse(content=f.read())
     return {"status": "ok", "app": "TenderBot - WhatsApp Tender Analysis Bot"}
 
+@app.get("/robots.txt")
+def robots_txt():
+    import os
+    from fastapi.responses import FileResponse
+    if os.path.exists("static/robots.txt"):
+        return FileResponse("static/robots.txt", media_type="text/plain")
+    return {"error": "Missing robots.txt"}
+
+@app.get("/sitemap.xml")
+def sitemap_xml():
+    import os
+    from fastapi.responses import FileResponse
+    if os.path.exists("static/sitemap.xml"):
+        return FileResponse("static/sitemap.xml", media_type="application/xml")
+    return {"error": "Missing sitemap.xml"}
+
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
