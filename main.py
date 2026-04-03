@@ -187,6 +187,14 @@ async def startup_event():
         
         while True:
             try:
+                from marketing_scraper import fetch_leads_from_directory
+                from database import SessionLocal
+                
+                print("🔍 Executing Daily Marketing Scraper...")
+                db = SessionLocal()
+                fetch_leads_from_directory(db)
+                db.close()
+                
                 from marketing_campaign import run_campaign
                 print("⏳ Executing Daily Marketing Campaign Drip...")
                 run_campaign()
@@ -212,7 +220,27 @@ async def startup_event():
         db.close()
     except Exception as e:
         print(f"❌ CRITICAL DATABASE ERROR ON STARTUP: {e}")
+
+@app.get("/trigger-marketing")
+def trigger_marketing(key: str = ""):
+    """Manual trigger to forcefully execute the Scraper and Broadcaster for testing."""
+    import os
+    from database import SessionLocal
+    from marketing_scraper import fetch_leads_from_directory
+    from marketing_campaign import run_campaign
+    
+    if key != os.getenv("ADMIN_PHONE", "6006224209"):
+        return {"status": "error", "message": "Unauthorized"}
         
+    try:
+        db = SessionLocal()
+        fetch_leads_from_directory(db)
+        db.close()
+        run_campaign()
+        return {"status": "success", "message": "Marketing Drip Force Executed! Check your WhatsApp."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 @app.on_event("shutdown")
 async def shutdown_event():
     print("🛑 TenderBot API gracefully shutting down...")
