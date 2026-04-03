@@ -128,6 +128,7 @@ class MarketingLead(Base):
     status = Column(String, default="new")  # new / contacted / replied / unsubscribed
     last_contacted_at = Column(DateTime, nullable=True)
     follow_up_count = Column(Integer, default=0)
+    template_used = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -145,6 +146,33 @@ class TenderRecord(Base):
     url = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class SystemPrompt(Base):
+    """Stores versions of the AI's core instructions for self-rewriting logic."""
+    __tablename__ = "system_prompts"
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    prompt_text = Column(String, nullable=False)
+    version = Column(Integer, default=1)
+    is_active = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class KnowledgeFact(Base):
+    """Stores autonomously harvested facts from the internet."""
+    __tablename__ = "knowledge_facts"
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    fact_text = Column(String, nullable=False)
+    source_url = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class MarketingTemplate(Base):
+    """Stores A/B test marketing variations to track conversion win rates."""
+    __tablename__ = "marketing_templates"
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    template_name = Column(String, unique=True, index=True)
+    message_body = Column(String, nullable=False)
+    sent_count = Column(Integer, default=0)
+    reply_count = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 def get_db():
     db = SessionLocal()

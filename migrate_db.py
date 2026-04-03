@@ -47,6 +47,13 @@ def run_migrations():
             conn.execute(text("ALTER TABLE analyses ADD COLUMN deadline_date TIMESTAMP;"))
             conn.commit()
 
+        # 4. Check marketing_leads table
+        columns = [col['name'] for col in inspector.get_columns('marketing_leads')]
+        if 'template_used' not in columns:
+            logger.info("Adding template_used to marketing_leads...")
+            conn.execute(text("ALTER TABLE marketing_leads ADD COLUMN template_used VARCHAR;"))
+            conn.commit()
+
         logger.info("Database migration check complete.")
 
 if __name__ == "__main__":

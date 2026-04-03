@@ -195,6 +195,12 @@ async def startup_event():
                 fetch_leads_from_directory(db)
                 db.close()
                 
+                from knowledge_harvester import harvest_knowledge
+                harvest_knowledge()
+                
+                from self_optimization import optimize_system_prompt
+                optimize_system_prompt()
+                
                 from marketing_campaign import run_campaign
                 print("⏳ Executing Daily Marketing Campaign Drip...")
                 run_campaign()

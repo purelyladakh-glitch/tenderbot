@@ -278,12 +278,19 @@ def handle_incoming_message(phone_number: str, text: str, pdf_bytes: bytes, db: 
             text = text.replace(match.group(0), "").strip()
             if not text: text = "hi"
 
-    from database import MarketingLead
+    from database import MarketingLead, MarketingTemplate
     
     # 🎯 SEAMLESS HANDOFF: Intercept outbound marketing leads when they reply
     lead = db.query(MarketingLead).filter(MarketingLead.phone_number == phone_number).first()
     if lead and lead.status == "contacted":
         lead.status = "replied"
+        
+        # 🧬 DARWIN ENGINE: Credit the winning template
+        if lead.template_used:
+            template = db.query(MarketingTemplate).filter(MarketingTemplate.template_name == lead.template_used).first()
+            if template:
+                template.reply_count += 1
+                
         db.commit()
         print(f"🎯 WIN: Marketing Lead {phone_number} just replied!")
 

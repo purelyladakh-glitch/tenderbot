@@ -136,13 +136,26 @@ def analyze_tender_document(file_path: str, language: str, db_session=None) -> d
     live_rates = get_live_market_data(location=tender_location, work_type=extracted_text[:200])
     print(f"📍 Tender location detected: '{tender_location}' — rates fetched for this area")
 
+    active_facts = ""
+    active_prompt = TENDER_ANALYSIS_PROMPT
+    if db_session:
+        from database import KnowledgeFact, SystemPrompt
+        facts = db_session.query(KnowledgeFact).all()
+        if facts:
+            active_facts = "\n\n[RELEVANT GOVERNMENT UPDATES (AUTONOMOUSLY HARVESTED)]\n" + "\n".join([f.fact_text for f in facts])
+            
+        # 🧬 AI BRAIN OVERRIDE: Prioritize self-written database instructions
+        db_prompt = db_session.query(SystemPrompt).filter(SystemPrompt.is_active == True).first()
+        if db_prompt:
+            active_prompt = db_prompt.prompt_text
+
     gen_config = types.GenerateContentConfig(
         temperature=0.2,
         top_p=0.95,
         top_k=64,
         max_output_tokens=8192,
         response_mime_type="application/json",
-        system_instruction=TENDER_ANALYSIS_PROMPT + "\n\n[CURRENT MARKET RATES FOR THIS TENDER'S LOCATION]\n" + live_rates
+        system_instruction=active_prompt + "\n\n[CURRENT MARKET RATES FOR THIS TENDER'S LOCATION]\n" + live_rates + active_facts
     )
 
     retries = 2
