@@ -97,13 +97,6 @@ def fetch_leads_from_directory(db: Session, target_url: str = None):
                 })
         except Exception as e:
             print(f"   [!] Failed to crawl {url}: {e}")
-
-    # 2. SEED FALLBACK (If crawler list is empty, inject your numbers for demo testing)
-    if not scraped_data:
-        scraped_data = [
-            {"name": "Rajesh Kumar", "company": "RK Builders Ladakh", "phone": "916006224209", "source": "demo_seed"},
-            {"name": "Tariq Ahamad", "company": "Valley Civils J&K", "phone": "919796700386", "source": "demo_seed"}
-        ]
     
     leads_added = 0
     for data in scraped_data:
