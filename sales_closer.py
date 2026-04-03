@@ -33,16 +33,10 @@ def run_sales_closer():
         
         for user in exhausted_users:
             try:
-                msg = (
-                    "🚨 *TenderBot AI Action Required*\n\n"
-                    "Your free tender limits ran out yesterday. Based on your previous documents, you are actively analyzing enterprise-grade tenders.\n\n"
-                    "We have unlocked a hidden *VIP Checkout Link* strictly tied to your mobile number giving you **₹300 OFF** the Quarterly Pro Tier.\n\n"
-                    "👉 Tap here to upgrade for only ₹399 using VIP Discount:\n"
-                    "🔗 https://web-production-b925d.up.railway.app/pay/discount_vip\n\n"
-                    "*(This link self-destructs in 2 hours)*"
-                )
+                from bot import send_whatsapp_template
                 
-                send_whatsapp_message(user.phone_number, msg)
+                # Trigger pre-approved Meta Template (bypasses 24h block)
+                send_whatsapp_template(user.phone_number, "vip_discount_upsell")
                 
                 # Mark as upsold
                 user.upsell_sent = True

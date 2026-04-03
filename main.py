@@ -188,25 +188,30 @@ async def startup_event():
         while True:
             try:
                 from marketing_scraper import fetch_leads_from_directory
-                from database import SessionLocal
+                from database import SessionLocal, acquire_daemon_lock
                 
-                print("🔍 Executing Daily Marketing Scraper...")
                 db = SessionLocal()
-                fetch_leads_from_directory(db)
+                # Lock for 23 hours to prevent parallel containers from duplicating messages
+                if acquire_daemon_lock(db, "marketing_drip", 23):
+                    print("🔍 Executing Daily Marketing Scraper...")
+                    fetch_leads_from_directory(db)
+                    
+                    from knowledge_harvester import harvest_knowledge
+                    harvest_knowledge()
+                    
+                    from sales_closer import run_sales_closer
+                    run_sales_closer()
+                    
+                    from self_optimization import optimize_system_prompt
+                    optimize_system_prompt()
+                    
+                    from marketing_campaign import run_campaign
+                    print("⏳ Executing Daily Marketing Campaign Drip...")
+                    run_campaign()
+                else:
+                    print("🔒 Marketing Drip locked by another worker node. Standing by.")
+                    
                 db.close()
-                
-                from knowledge_harvester import harvest_knowledge
-                harvest_knowledge()
-                
-                from sales_closer import run_sales_closer
-                run_sales_closer()
-                
-                from self_optimization import optimize_system_prompt
-                optimize_system_prompt()
-                
-                from marketing_campaign import run_campaign
-                print("⏳ Executing Daily Marketing Campaign Drip...")
-                run_campaign()
             except Exception as e:
                 print(f"❌ Marketing Campaign error: {e}")
                 traceback.print_exc()

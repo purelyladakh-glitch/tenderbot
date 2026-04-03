@@ -47,6 +47,34 @@ async def send_text_message(to: str, text: str):
         print(f"❌ EXCEPTION sending WhatsApp message to {to}: {str(e)}")
         return {"error": str(e)}
 
+async def send_template_message(to: str, template_name: str, language_code: str = "en") -> dict:
+    """Send a pre-approved Meta Template Message to bypass the 24h Customer Service Window restriction."""
+    headers = {
+        "Authorization": f"Bearer {META_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "template",
+        "template": {
+            "name": template_name,
+            "language": {
+                "code": language_code
+            }
+        }
+    }
+    print(f"Sending template {template_name} to {to}")
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(API_URL, headers=headers, json=payload, timeout=10.0)
+            if response.status_code >= 400:
+                print(f"❌ FAILED template to {to}. Payload: {json.dumps(payload)}\nResponse: {response.text}")
+            return response.json()
+    except Exception as e:
+        print(f"❌ EXCEPTION sending template: {str(e)}")
+        return {"error": str(e)}
+
 async def upload_media(file_bytes: bytes, mime_type: str, filename: str) -> str:
     """Uploads media direct to Meta and returns the media_id"""
     url = f"https://graph.facebook.com/{META_API_VERSION}/{META_PHONE_NUMBER_ID}/media"

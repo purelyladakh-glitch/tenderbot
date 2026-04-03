@@ -54,6 +54,12 @@ def send_whatsapp_message(to_number: str, body: str, media_url: str = None):
     else:
         run_async_task(whatsapp.send_text_message(to_number, body))
 
+def send_whatsapp_template(to_number: str, template_name: str, language_code: str = "en"):
+    """Sends a Meta-approved marketing template message."""
+    try:
+        run_async_task(whatsapp.send_template_message(to_number, template_name, language_code))
+    except Exception as e:
+        print(f"❌ Template wrapper fail: {e}")
 
 def send_interactive_buttons(to_number: str, body: str, buttons: list, content_sid: str = None):
     """

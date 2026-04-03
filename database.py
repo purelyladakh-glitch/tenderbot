@@ -175,6 +175,31 @@ class MarketingTemplate(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class DaemonState(Base):
+    """Tracks daemon execution to prevent duplicate thread runs across containers."""
+    __tablename__ = "daemon_states"
+    task_name = Column(String, primary_key=True, index=True)
+    last_executed = Column(DateTime, default=datetime.min)
+
+def acquire_daemon_lock(db, task_name: str, interval_hours: int) -> bool:
+    """Core transaction lock for Railway horizontal scaling."""
+    from datetime import timedelta
+    now = datetime.utcnow()
+    state = db.query(DaemonState).filter(DaemonState.task_name == task_name).first()
+    
+    if not state:
+        state = DaemonState(task_name=task_name, last_executed=now)
+        db.add(state)
+        db.commit()
+        return True
+    
+    if now < state.last_executed + timedelta(hours=interval_hours):
+        return False
+        
+    state.last_executed = now
+    db.commit()
+    return True
+
 def get_db():
     db = SessionLocal()
     try:

@@ -477,7 +477,12 @@ def check_deadlines_and_remind():
     Run this daily at 7:00 AM.
     """
     print("\n⏰ Checking tender deadlines for reminders...")
+    from database import SessionLocal, acquire_daemon_lock
     db = SessionLocal()
+    if not acquire_daemon_lock(db, "deadline_reminders", 23):
+        print("🔒 Deadline Reminder thread locked by another node.")
+        db.close()
+        return
     try:
         now = datetime.utcnow()
         today = now.date()

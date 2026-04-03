@@ -5,9 +5,19 @@ from database import SessionLocal, KnowledgeFact
 from google import genai
 from google.genai import types
 
+import random
+import time
+
 def search_snippets(query: str) -> str:
     """Uses headless DDG to extract text snippets related to a query."""
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15",
+        "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0 Safari/537.36"
+    ]
+    headers = {"User-Agent": random.choice(user_agents)}
+    time.sleep(random.uniform(3.0, 7.0)) # Jitter to prevent IP blocks
     url = f"https://html.duckduckgo.com/html/?q={query.replace(' ', '+')}"
     snippets = []
     try:
