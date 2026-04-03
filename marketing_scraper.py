@@ -16,26 +16,53 @@ def clean_phone(phone_str: str) -> str:
         return f"91{digits[1:]}"
     return None
 
+def duckduckgo_search(query: str, max_results: int = 4) -> list:
+    """Uses a lightweight headless search to autonomously find target websites."""
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    url = f"https://html.duckduckgo.com/html/?q={query.replace(' ', '+')}"
+    urls = []
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(response.text, "html.parser")
+        for a in soup.find_all('a', class_='result__url'):
+            if len(urls) >= max_results: break
+            href = a.get('href')
+            if href and "http" in href:
+                import urllib.parse
+                if href.startswith("//duckduckgo.com/l/?uddg="):
+                    parsed = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
+                    href = parsed.get('uddg', [href])[0]
+                urls.append(href)
+    except Exception as e:
+        print(f"   [!] Search engine connection failed: {e}")
+    return urls
+
 def fetch_leads_from_directory(db: Session, target_url: str = None):
     """
-    Scrapes regional public contractor directories.
-    Designed to parse standard HTML tables containing Name, Company, and Contact info.
+    Scrapes regional public contractor directories autonomously.
     """
-    print(f"🔍 Starting Marketing Crawler...")
+    print(f"🔍 Starting Autonomous Marketing Hunter...")
     
     scraped_data = []
     
-    # Impersonate a standard browser to bypass basic security blocks
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
     }
 
-    # ACTIVE CRAWLER TARGETS
-    # You can drop ANY public directory URL into this list (e.g. IndiaMart, JustDial, PWD Govt sites)
-    TARGET_URLS = [
-        # "https://jkera.org/contact-us.html",
-        # "https://jkpcc.com/contractors"
+    TARGET_URLS = []
+    
+    print("🌍 Autonomously searching the web for regional contractor lists...")
+    search_queries = [
+        "certified civil contractors contact list jammu and kashmir phone number",
+        "pwd contractors association srinagar directory mobile",
+        "registered construction companies leh ladakh contact details"
     ]
+    for sq in search_queries:
+        found_urls = duckduckgo_search(sq, max_results=3)
+        TARGET_URLS.extend(found_urls)
+    
+    TARGET_URLS = list(set(TARGET_URLS)) # Remove duplicate domains
+    print(f"🎯 Discovered {len(TARGET_URLS)} potential web targets to hunt through!")
     
     # 1. LIVE AUTONOMOUS CRAWL LOGIC 
     for url in TARGET_URLS:
