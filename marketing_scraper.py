@@ -21,22 +21,62 @@ def fetch_leads_from_directory(db: Session, target_url: str = None):
     Scrapes regional public contractor directories.
     Designed to parse standard HTML tables containing Name, Company, and Contact info.
     """
-    print(f"🔍 Starting Marketing Scraper...")
+    print(f"🔍 Starting Marketing Crawler...")
     
-    # ---------------------------------------------------------
-    # INSERT LIVE SCRAPING LOGIC HERE
-    # Example:
-    # response = requests.get("https://raw_directory_link_here")
-    # soup = BeautifulSoup(response.text, "html.parser")
-    # ... extraction logic ...
-    # ---------------------------------------------------------
+    scraped_data = []
     
-    # For safety and immediate pipeline testing, we inject test seeds.
-    # In production, this array is populated by the BeautifulSoup parser above.
-    scraped_data = [
-        {"name": "Rajesh Kumar", "company": "RK Builders Ladakh", "phone": "916006224209", "source": "demo_seed"},
-        {"name": "Tariq Ahamad", "company": "Valley Civils J&K", "phone": "919796700386", "source": "demo_seed"}
+    # Impersonate a standard browser to bypass basic security blocks
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+    }
+
+    # ACTIVE CRAWLER TARGETS
+    # You can drop ANY public directory URL into this list (e.g. IndiaMart, JustDial, PWD Govt sites)
+    TARGET_URLS = [
+        # "https://jkera.org/contact-us.html",
+        # "https://jkpcc.com/contractors"
     ]
+    
+    # 1. LIVE AUTONOMOUS CRAWL LOGIC 
+    for url in TARGET_URLS:
+        try:
+            print(f"   [~] Crawling: {url}")
+            response = requests.get(url, headers=headers, timeout=15)
+            soup = BeautifulSoup(response.text, "html.parser")
+            
+            # Universal Regex to find Indian phone numbers anywhere in raw website text
+            phone_pattern = r'(?:(?:\+|0{0,2})91[\s.-]?)?([6-9]\d{9})'
+            
+            raw_text = soup.get_text(separator=" ")
+            matches = re.finditer(phone_pattern, raw_text)
+            
+            for match in matches:
+                raw_phone = match.group(0)
+                
+                # Context-Proximity Name Extraction:
+                # Grab the 50 characters of text immediately preceding the phone number to guess the company
+                start_idx = max(0, match.start() - 50)
+                context_chunk = raw_text[start_idx:match.start()].strip()
+                
+                # Clean up nearby words to form a plausible Company Name string
+                context_words = re.findall(r'[A-Za-z]+', context_chunk)
+                company_guess = " ".join(context_words[-3:]) if len(context_words) >= 3 else "Local Contractor"
+                
+                scraped_data.append({
+                    "name": "Team", 
+                    "company": company_guess.title(),
+                    "phone": raw_phone,
+                    "source": url
+                })
+        except Exception as e:
+            print(f"   [!] Failed to crawl {url}: {e}")
+
+    # 2. SEED FALLBACK (If crawler list is empty, inject your numbers for demo testing)
+    if not scraped_data:
+        scraped_data = [
+            {"name": "Rajesh Kumar", "company": "RK Builders Ladakh", "phone": "916006224209", "source": "demo_seed"},
+            {"name": "Tariq Ahamad", "company": "Valley Civils J&K", "phone": "919796700386", "source": "demo_seed"}
+        ]
     
     leads_added = 0
     for data in scraped_data:
