@@ -118,6 +118,19 @@ class ReminderLog(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class MarketingLead(Base):
+    __tablename__ = "marketing_leads"
+
+    phone_number = Column(String, primary_key=True, index=True)
+    name = Column(String, nullable=True)
+    company = Column(String, nullable=True)
+    source = Column(String, default="scraper")
+    status = Column(String, default="new")  # new / contacted / replied / unsubscribed
+    last_contacted_at = Column(DateTime, nullable=True)
+    follow_up_count = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class TenderRecord(Base):
     __tablename__ = "tender_records"
 

@@ -178,6 +178,28 @@ async def startup_event():
     threading.Thread(target=deadline_reminder_loop, daemon=True).start()
     print("✅ Deadline reminder scheduler started (every 6 hours)")
 
+    # --- Advanced Marketing Engine Scheduler ---
+    def marketing_drip_loop():
+        """Automatically runs the marketing campaign daily."""
+        import time as _time
+        import traceback
+        _time.sleep(300) # Wait 5 minutes after server start
+        
+        while True:
+            try:
+                from marketing_campaign import run_campaign
+                print("⏳ Executing Daily Marketing Campaign Drip...")
+                run_campaign()
+            except Exception as e:
+                print(f"❌ Marketing Campaign error: {e}")
+                traceback.print_exc()
+            
+            # Sleep 24 hours between drips
+            _time.sleep(86400)
+    
+    threading.Thread(target=marketing_drip_loop, daemon=True).start()
+    print("✅ Marketing Drip thread started (runs every 24h)")
+
     if meta_token.startswith("EAA") and len(meta_token) < 250:
         print("⚠️ WARNING: META_ACCESS_TOKEN may be temporary.")
         print("⚠️ Generate a permanent System User token. See README for instructions.")
