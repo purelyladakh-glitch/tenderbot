@@ -33,6 +33,11 @@ def run_migrations():
             conn.execute(text("ALTER TABLE users ADD COLUMN source VARCHAR DEFAULT 'organic';"))
             conn.commit()
 
+        if 'upsell_sent' not in columns:
+            logger.info("Adding upsell_sent tracking flag...")
+            conn.execute(text("ALTER TABLE users ADD COLUMN upsell_sent BOOLEAN DEFAULT FALSE;"))
+            conn.commit()
+
         # 2. Check webhook_logs table
         columns = [col['name'] for col in inspector.get_columns('webhook_logs')]
         if 'message_id' not in columns:

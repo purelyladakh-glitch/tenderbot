@@ -40,7 +40,7 @@ CRITICAL TEXT FORMATTING RULES FOR JSON VALUES:
 
   "part5_action_plan": "DOCUMENTS & ACTION PLAN: Use bullet points (\\n- ) for a Day-by-day countdown checklist from today to deadline.",
 
-  "part6_cost_estimate": "PROJECT COST ESTIMATE: Use bullet points (\\n- ) for breakdown: Materials, Labour, Equipment, Overheads, Contingencies, GST. Then show TOTAL ESTIMATED COST and Profit margin scenarios prominently.",
+  "part6_cost_estimate": "ENTERPRISE COST & PROFIT CALCULATION: Use bullet points (\\n- ) for strict mathematical breakdown: 1. Hard Costs (Labor, Material, Machinery, Transport). 2. Overhead (GST, Taxes). 3. THE SWEET SPOT: Calculate the exact L1 Profit Margin % required to beat competitor averages while avoiding a loss. Emphasize this final margin prominently with a 🎯 emoji.",
 
   "part7_competitor": "COMPETITOR INTELLIGENCE: Use bullet points (\\n- ). How many bidders? expected L1 range? Strategy to win.",
 

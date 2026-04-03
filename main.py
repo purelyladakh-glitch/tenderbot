@@ -198,6 +198,9 @@ async def startup_event():
                 from knowledge_harvester import harvest_knowledge
                 harvest_knowledge()
                 
+                from sales_closer import run_sales_closer
+                run_sales_closer()
+                
                 from self_optimization import optimize_system_prompt
                 optimize_system_prompt()
                 
@@ -213,6 +216,17 @@ async def startup_event():
     
     threading.Thread(target=marketing_drip_loop, daemon=True).start()
     print("✅ Marketing Drip thread started (runs every 24h)")
+    
+    # --- Autonomous Shadow Scraper Setup ---
+    def shadow_scraper_loop():
+        try:
+            from scraper import run_scraper_schedule
+            run_scraper_schedule()
+        except Exception as e:
+            print(f"❌ Critical Shadow Scraper Failure: {e}")
+            
+    threading.Thread(target=shadow_scraper_loop, daemon=True).start()
+    print("✅ Shadow Alert Scraper thread started")
 
     if meta_token.startswith("EAA") and len(meta_token) < 250:
         print("⚠️ WARNING: META_ACCESS_TOKEN may be temporary.")

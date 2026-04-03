@@ -9,7 +9,7 @@ _HINGLISH = {
     "welcome_new": "👋 Welcome to *TenderBot*!\n\nMain kisi bhi Government Tender PDF ko 3 minute mein padh kar bata sakta hoon:\n✅ Kya aap qualify karte ho?\n✅ Hidden Risks & problems\n✅ BOQ Rates aur Profit estimate\n\nShuru karne ke liye, apni bhasha chunein (Sirf Number reply karo):",
     "lang_menu": "🌐 *Bhasha Chunein / Select Language:*\n\n1️⃣ English\n2️⃣ Hindi (हिंदी)\n3️⃣ Hinglish (Default)\n4️⃣ Marathi (मराठी)\n\n👉 *Sirf 1, 2, 3, ya 4 type karo!*",
     "lang_set_success": "✅ Language *Hinglish* set ho gayi hai.\n\nAb, mujhe koi bhi Tender ka *PDF file* ya link bhejo, aur main turant analyze kar dunga! 📄",
-    "welcome_message": "👋 TenderBot mein wapas swagat hai!\n\n📄 Tender PDF bhejo — 3 min mein full report.\n⚙️ \"Alert chahiye\" type karo preferences set karne ke liye.\n💰 \"Plan\" type karo plans dekhne ke liye.\n🌐 \"Language\" type karo bhasha badalne ke liye.",
+    "welcome_message": "👋 Welcome back to *BidMaster AI* - Enterprise OS!\n\nMain aapka personal bidding intelligence agent hoon. Kya dekhna hai?\n\n📄 *Analyze Tender* — PDF bhejo instantly Profit Estimate lene ke liye.\n🔔 *Setup Alerts* — Naye tender hunt karne ke liye 'alerts' type karo.\n💎 *My Plan* — Credits check karne ya upgrade ke liye 'plan' likho.\n🌐 *Settings* — Bhasha badalne ke liye 'language' type karo.",
 
     # Analysis Menu
     "menu_title": "📊 *Tender Analysis Menu*",
@@ -117,7 +117,7 @@ _ENGLISH = {
     "welcome_new": "👋 Welcome to *TenderBot*!\n\nI can analyze any Government Tender PDF in 3 minutes:\n✅ Eligibility Check\n✅ Hidden Risks\n✅ BOQ Rates & Profit Estimate\n\nTo begin, please select your preferred language:",
     "lang_menu": "🌐 *Select Language:*\n\n1️⃣ English\n2️⃣ Hindi (हिंदी)\n3️⃣ Hinglish (Default)\n4️⃣ Marathi (मराठी)\n\n👉 *Reply with 1, 2, 3, or 4!*",
     "lang_set_success": "✅ Language set to *English*.\n\nPlease send me a Tender *PDF file* and I will analyze it instantly! 📄",
-    "welcome_message": "👋 Welcome back to TenderBot!\n\n📄 Send a Tender PDF — full report in 3 minutes.\n⚙️ Type \"alerts\" to set preferences.\n💰 Type \"plan\" to view plans.\n🌐 Type \"language\" to change language.",
+    "welcome_message": "👋 Welcome back to *BidMaster AI* - Enterprise OS!\n\nI am your automated bidding and tender intelligence agent.\n\n📄 *Analyze Tender* — Send any PDF to extract Cost Estimates.\n🔔 *Setup Alerts* — Type 'alerts' to auto-hunt new jobs.\n💎 *My Plan* — Type 'plan' to view credits and upgrade.\n🌐 *Settings* — Type 'language' to change language.",
     "menu_title": "📊 *Tender Analysis Menu*",
     "menu_opt_1": "1️⃣ Eligibility Check",
     "menu_opt_2": "2️⃣ Hidden Risks & Issues",

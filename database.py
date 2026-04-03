@@ -50,6 +50,7 @@ class User(Base):
     free_analyses_used = Column(Integer, default=0)  # max 1
     total_analyses_done = Column(Integer, default=0)
     subscription_expiry = Column(DateTime, nullable=True)
+    upsell_sent = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
