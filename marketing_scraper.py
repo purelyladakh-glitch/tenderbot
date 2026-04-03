@@ -53,9 +53,22 @@ def fetch_leads_from_directory(db: Session, target_url: str = None):
     
     print("🌍 Autonomously searching the web for regional contractor lists...")
     search_queries = [
-        "certified civil contractors contact list jammu and kashmir phone number",
+        # Ladakh Deep Targeting
+        "registered construction companies leh ladakh contact details",
+        "civil contractors association kargil directory mobile number",
+        "pwd contractors drass phone number list",
+        "zanskar infrastructure and civil works contact",
+        
+        # Kashmir Deep Targeting
         "pwd contractors association srinagar directory mobile",
-        "registered construction companies leh ladakh contact details"
+        "anantnag civil contractors list phone numbers",
+        "baramulla construction contractors directory contact",
+        
+        # Jammu Deep Targeting
+        "certified civil contractors contact list jammu phone number",
+        "jammu pwd a class contractors directory",
+        "udampur civil works contractors phone list",
+        "rajouri construction agency contact numbers"
     ]
     for sq in search_queries:
         found_urls = duckduckgo_search(sq, max_results=3)
