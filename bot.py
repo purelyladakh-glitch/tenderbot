@@ -245,6 +245,14 @@ def handle_incoming_message(phone_number: str, text: str, pdf_bytes: bytes, db: 
             total_users = db.query(User).count()
             active_today = db.query(User).filter(User.created_at > datetime.utcnow() - timedelta(days=1)).count()
             
+            # Extract Automation engine traces
+            try:
+                from database import MarketingLead, MarketingTemplate
+                total_leads = db.query(MarketingLead).count()
+                total_pitches = sum(t.sent_count for t in db.query(MarketingTemplate).all())
+            except Exception:
+                total_leads, total_pitches = 0, 0
+            
             # Source grouping
             # Note: We use getattr in case the column doesn't exist yet while Railway migrations run
             sources = []
@@ -263,8 +271,11 @@ def handle_incoming_message(phone_number: str, text: str, pdf_bytes: bytes, db: 
             
             stats_msg = (
                 "📊 *BidMaster AI Live Analytics*\n\n"
-                f"👥 Total Users: {total_users}\n"
+                f"👥 Total Inbound Users: {total_users}\n"
                 f"🔥 New Users (24h): {active_today}\n\n"
+                f"🤖 *Automated Marketing Engine:*\n"
+                f"  • Contacts Harvested: {total_leads}\n"
+                f"  • WhatsApp Pitches Sent: {total_pitches}\n\n"
                 f"📍 *Traffic Sources:*\n{source_text}\n\n"
                 f"📄 Total Analyses: {total_analyses}\n"
                 f"💳 Paid Orders: {total_payments}\n"
