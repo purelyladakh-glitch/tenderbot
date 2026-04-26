@@ -4,7 +4,7 @@ AI-powered WhatsApp bot for Indian government contractors. Send a tender PDF →
 
 ## Features
 
-- ✅ **9-part Tender Analysis** via Google Gemini 3 Flash
+- ✅ **10-part Tender Analysis** via Google Gemini Flash (structured output)
 - ✅ **WhatsApp Interface** via Meta Cloud API
 - ✅ **Natural Language** — Hindi, English, Hinglish, regional languages
 - ✅ **All India Coverage** — 28 states, 8 UTs, 20+ central portals
@@ -18,10 +18,10 @@ AI-powered WhatsApp bot for Indian government contractors. Send a tender PDF →
 ## Tech Stack
 
 - Python 3.11 / FastAPI / Uvicorn
-- Google Gemini 3 Flash Preview (AI analysis)
+- Google Gemini Flash with response_schema structured output (AI analysis)
 - Meta Cloud API
 - Razorpay (payments)
-- SQLite + SQLAlchemy (database)
+- PostgreSQL + SQLAlchemy (database, via Railway)
 - Railway.app (deployment)
 
 ## System Requirements
@@ -61,7 +61,8 @@ META_API_VERSION=v18.0
 RAZORPAY_KEY_ID=
 RAZORPAY_KEY_SECRET=
 RAILWAY_URL=https://your-app.up.railway.app
-DATABASE_URL=sqlite:///./tenderbot.db
+DATABASE_URL=postgresql://user:password@host:port/database
+BOT_PHONE=919796700386
 PORT=8000
 ```
 

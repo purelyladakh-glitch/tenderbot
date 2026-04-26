@@ -11,6 +11,46 @@ from PIL import Image
 from dotenv import load_dotenv
 from prompts import TENDER_ANALYSIS_PROMPT
 from live_data import get_live_market_data, extract_location_from_text
+from pydantic import BaseModel, Field
+
+class TenderAnalysis(BaseModel):
+    """Canonical schema for Gemini tender analysis output.
+    Used as response_schema to guarantee JSON structure and types.
+    Field names here are the SINGLE SOURCE OF TRUTH — bot.py reads these exact names.
+    """
+
+    # Header / summary card fields
+    department: str = Field(description="Issuing department or agency name")
+    work_description: str = Field(description="Brief work description, max 80 characters")
+    tender_number: str = Field(description="Official tender reference number")
+    value: int = Field(description="Estimated tender value in INR as plain integer (no commas, no symbols, e.g. 28500000)")
+    emd_amount: str = Field(description="EMD amount and type, e.g. '₹2,85,000 (Bank Guarantee)'")
+    deadline_date: str = Field(description="Submission deadline date in YYYY-MM-DD format")
+    deadline_time: str = Field(description="Submission deadline time in HH:MM 24-hour format")
+    days_remaining: int = Field(description="Number of days from today to the deadline as integer")
+    completion_period: str = Field(description="Project completion period as text, e.g. '12 months'")
+    location: str = Field(description="Project location: city, state")
+
+    # Verdict fields
+    quick_verdict_score: int = Field(description="0 to 10 attractiveness score", ge=0, le=10)
+    quick_verdict_recommendation: str = Field(description="Exactly one of: 'BID' or 'SKIP'")
+    critical_risks_count: int = Field(description="Number of HIGH-severity risks identified")
+    warnings_count: int = Field(description="Number of MEDIUM-severity warnings identified")
+    recommended_bid: int = Field(description="Recommended bid total in INR as integer")
+    estimated_profit: int = Field(description="Estimated profit amount in INR as integer")
+
+    # 10-part detailed analysis (each is a formatted text block in the user's language)
+    part1_summary: str = Field(description="Part 1 — Tender summary at a glance")
+    part2_eligibility: str = Field(description="Part 2 — Eligibility check (financial, experience, registration)")
+    part3_risks: str = Field(description="Part 3 — Hidden risks coded with 🔴 HIGH / 🟡 MEDIUM / 🟢 LOW")
+    part4_boq: str = Field(description="Part 4 — BOQ rates and bid strategy with math")
+    part5_action_plan: str = Field(description="Part 5 — Documents and day-by-day countdown checklist")
+    part6_cost_estimate: str = Field(description="Part 6 — Cost breakdown: materials, labour, equipment, overheads")
+    part7_competitor: str = Field(description="Part 7 — Expected bidders and competitive strategy")
+    part8_subcontractors: str = Field(description="Part 8 — Subcontractor requirements and specialist trades")
+    part9_cashflow: str = Field(description="Part 9 — Working capital, monthly cash flow, retention timeline")
+    part10_recommendation: str = Field(description="Part 10 — Final BID/SKIP recommendation and opportunity score")
+
 
 load_dotenv()
 
@@ -21,7 +61,7 @@ client = genai.Client(api_key=api_key)
 # Use the latest stable Gemini Flash model alias
 MODEL_NAME = "gemini-flash-latest"
 
-print(f"✅ Gemini client initialized with model: {MODEL_NAME}")
+print(f"[OK] Gemini client initialized with model: {MODEL_NAME}")
 
 def is_pdf_too_large(file_path: str, max_size_mb: int = 50) -> bool:
     size_mb = os.path.getsize(file_path) / (1024 * 1024)
@@ -155,6 +195,7 @@ def analyze_tender_document(file_path: str, language: str, db_session=None) -> d
         top_k=64,
         max_output_tokens=8192,
         response_mime_type="application/json",
+        response_schema=TenderAnalysis,
         system_instruction=active_prompt + "\n\n[CURRENT MARKET RATES FOR THIS TENDER'S LOCATION]\n" + live_rates + active_facts
     )
 
@@ -197,7 +238,12 @@ def analyze_tender_document(file_path: str, language: str, db_session=None) -> d
 
             # Try response.parsed first (structured output)
             if hasattr(response, 'parsed') and response.parsed is not None:
-                result_json = response.parsed
+                if hasattr(response.parsed, 'model_dump'):
+                    result_json = response.parsed.model_dump()
+                elif hasattr(response.parsed, 'dict'):
+                    result_json = response.parsed.dict()
+                else:
+                    result_json = response.parsed
                 print(f"✅ Parsed via response.parsed")
 
             # Try response.text (raw JSON string)

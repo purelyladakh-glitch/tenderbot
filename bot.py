@@ -154,11 +154,15 @@ def get_or_create_preferences(db: Session, phone_number: str) -> ContractorPrefe
     return pref
 
 def generate_referral_link(user_phone: str) -> str:
-    """Generate a WhatsApp deep link with pre-filled referral text."""
-    # Use the actual WhatsApp number, not the phone number ID
-    bot_wa_number = os.getenv("BOT_PHONE", "919796700386")
-    encoded_text = f"referral%20from%20{user_phone}"
-    return f"https://wa.me/{bot_wa_number}?text={encoded_text}"
+    """Generates a wa.me referral link with proper URL encoding.
+    Returns empty string if BOT_PHONE env var is missing — caller should handle that.
+    """
+    from urllib.parse import quote
+    bot_phone = os.getenv("BOT_PHONE", "").lstrip("+")
+    if not bot_phone:
+        return ""
+    referral_text = f"referral from {user_phone}"
+    return f"https://wa.me/{bot_phone}?text={quote(referral_text)}"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # INTENT DETECTION
@@ -798,33 +802,19 @@ def process_pdf_background(phone_number: str, pdf_path: str):
         else:
             deadline_display = "📅 Deadline: Document mein check karein"
 
-        verdict_score = analysis_json.get("bid_score", 0)
-        verdict_text = analysis_json.get("bid_verdict", "")
-        if not verdict_text or verdict_text == "Bid or Skip" or verdict_text == "Unknown":
-            part10 = analysis_json.get("part10_recommendation", "")
-            if "BID" in str(part10).upper():
-                verdict_text = "BID ✅"
-            elif "SKIP" in str(part10).upper():
-                verdict_text = "SKIP ❌"
-            else:
-                verdict_text = "Review needed"
-                
-        if not verdict_score or verdict_score == 0:
-            import re
-            score_match = re.search(r'(\d+)/10', str(analysis_json.get("part10_recommendation", "")))
-            if score_match:
-                verdict_score = int(score_match.group(1))
-
-        verdict_msg = (
-            f"💼 *{analysis_json.get('department', 'Tender')}*\n"
-            f"📝 {str(analysis_json.get('work_description', 'General Work'))[:50]}...\n"
-            f"💰 Value: {value_display}\n"
-            f"{deadline_display}\n\n"
-            f"🎯 *Verdict:* {verdict_text} — {verdict_score}/10\n"
-            f"⚠️ Critical Risks: {len(analysis_json.get('critical_risks', []))}\n"
-            f"📌 Warnings: {len(analysis_json.get('warnings', []))}\n"
-            f"📈 Rec. Bid: {format_inr(analysis_json.get('recommended_bid', 0))}\n"
-            f"💸 Est. Profit: {format_inr(analysis_json.get('estimated_profit', 0))}"
+        work_desc = analysis_json.get("work_description") or "General Work"
+        verdict_msg = get_string(user.language_preference, "verdict_header").format(
+            department=analysis_json.get("department", "Tender"),
+            work=work_desc[:50] + ("..." if len(work_desc) > 50 else ""),
+            value=format_inr(analysis_json.get("value", 0)),
+            deadline=analysis_json.get("deadline_date", "N/A"),
+            days=analysis_json.get("days_remaining", "N/A"),
+            verdict=analysis_json.get("quick_verdict_recommendation", "Unknown"),
+            score=analysis_json.get("quick_verdict_score", 0),
+            critical=analysis_json.get("critical_risks_count", 0),
+            warnings=analysis_json.get("warnings_count", 0),
+            bid=format_inr(analysis_json.get("recommended_bid", 0)),
+            profit=format_inr(analysis_json.get("estimated_profit", 0)),
         )
         
         # 2. Get Analysis Menu
@@ -848,9 +838,6 @@ def process_pdf_background(phone_number: str, pdf_path: str):
         # Send everything at once
         send_whatsapp_message(phone_number, full_msg)
 
-        if os.path.exists(pdf_path):
-            os.remove(pdf_path)
-
     except Exception as e:
         print(f"Error: {e}")
         if user:
@@ -858,6 +845,12 @@ def process_pdf_background(phone_number: str, pdf_path: str):
             db.commit()
             send_whatsapp_message(phone_number, get_string(user.language_preference, "error_gemini_failed"))
     finally:
+        # Always clean up the temp PDF file
+        if pdf_path and os.path.exists(pdf_path):
+            try:
+                os.remove(pdf_path)
+            except Exception:
+                pass
         db.close()
 
 def handle_menu(user: User, intent: str, text: str, latest_analysis: Analysis, db: Session):
@@ -906,10 +899,11 @@ def handle_menu(user: User, intent: str, text: str, latest_analysis: Analysis, d
         
     elif intent == "menu_9":
         # Share & Earn
+        referral_link = generate_referral_link(user.phone_number)
         referral_msg = (
             "🎁 *Dost ko bhi bhejo — aap dono ko free credit milega!*\n"
             f"👇 Yeh link COPY karke apne contractor friends ko WhatsApp pe bhejo:\n\n"
-            f"https://wa.me/?text=Hey!%20Use%20TenderBot%20to%20analyse%20government%20tenders%20instantly.%20Click%20here%20to%20start:%20https://wa.me/919796700386?text=referral%20from%20%2B{user.phone_number.replace('+', '')}\n\n"
+            f"{referral_link}\n\n"
             "Jab woh is link se TenderBot join karega, aapko +1 free analysis milega! 🎉"
         )
         send_whatsapp_message(user.phone_number, referral_msg)
@@ -921,7 +915,7 @@ def handle_menu(user: User, intent: str, text: str, latest_analysis: Analysis, d
         
         # Add a subtle "Share & Earn" nudge at the end of every detailed section
         referral_link = generate_referral_link(user.phone_number)
-        nudge = f"\n\n🎁 *Tip:* Yeh link COPY karke dosto ko bhejo and get free credit!\nhttps://wa.me/919796700386?text=referral%20from%20+{user.phone_number.replace('+', '')}"
+        nudge = f"\n\n🎁 *Tip:* Yeh link COPY karke dosto ko bhejo and get free credit!\n{referral_link}"
         
         send_long_message(user.phone_number, section_text + nudge)
         
@@ -948,7 +942,8 @@ def handle_menu(user: User, intent: str, text: str, latest_analysis: Analysis, d
         for keyword, part_key in keyword_map.items():
             if keyword in text_lower:
                 content = data.get(part_key, get_string(user.language_preference, "section_not_available"))
-                nudge = f"\n\n🎁 *Tip:* Yeh link COPY karke dosto ko bhejo and get free credit!\nhttps://wa.me/919796700386?text=referral%20from%20+{user.phone_number.replace('+', '')}"
+                referral_link = generate_referral_link(user.phone_number)
+                nudge = f"\n\n🎁 *Tip:* Yeh link COPY karke dosto ko bhejo and get free credit!\n{referral_link}"
                 send_long_message(user.phone_number, content + nudge)
                 return
                 
